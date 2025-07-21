@@ -111,7 +111,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         scale_factor = 1.0;
     }
     // Scale the UV coordinates dynamically
-    let scaled_uv = uv * scale_factor;
+    let scaled_uv = uv ;
 
     // Calculate the ray direction
     let dir_camera = screen_uv_to_ray_dir(scaled_uv, push.fov_y_deg, aspect);
@@ -135,7 +135,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let normal = estimate_normal(hit_point);
     let light = max(dot(normal, -sun_dir), 0.0);
 
-    let t = env_data.time * 20.0;
+    let t = env_data.time;
     let angle = dot(uv, vec2(12.0, 7.0)) + t; // or use dist from center
     let r = 0.5 + 0.5 * sin(angle);
     let g = 0.5 + 0.5 * sin(angle + 2.0);

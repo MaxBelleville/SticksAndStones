@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default, sync::Arc};
+use std::collections::HashMap;
 
 use super::{node,res};
 
@@ -425,7 +425,7 @@ pub fn serialize_nodes_dag(
 
     // We store ONLY the bits (always written) and record the GPU start offset (deduped)
     let bit_end = bit_writer.bits.len();
-    let gpu_end = gpu_writer.nodes.len();
+    //let gpu_end = gpu_writer.nodes.len();
 
     let cached_bits = bit_writer.bits[bit_start..bit_end].to_vec();
 

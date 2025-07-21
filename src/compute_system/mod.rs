@@ -1,7 +1,8 @@
 use bevy::{
     asset::RenderAssetUsages,
     prelude::*,
-    render::{extract_resource::ExtractResource, render_resource::*}, window::WindowMode,
+    render::{extract_resource::ExtractResource, render_resource::*},
+    window::WindowMode,
 };
 use bytemuck::{Pod, Zeroable};
 
@@ -11,21 +12,20 @@ mod node;
 mod render_pipe;
 mod renderer;
 
-
 #[derive(Component)]
 pub struct ComputePlaneComponent;
 
 #[repr(C)]
 #[derive(ShaderType, Clone, Copy, Pod, Zeroable)]
 pub struct EnviromentData {
-     cam_rotx: Vec3,
-     sunx: f32,
-     cam_roty: Vec3,
-     suny: f32,
-     cam_rotz: Vec3,
-     sunz: f32,
-     cam_pos: Vec3,
-     time: f32,
+    cam_rotx: Vec3,
+    sunx: f32,
+    cam_roty: Vec3,
+    suny: f32,
+    cam_rotz: Vec3,
+    sunz: f32,
+    cam_pos: Vec3,
+    time: f32,
 }
 
 #[repr(C)]
@@ -39,11 +39,13 @@ struct PushConstants {
 }
 
 impl PushConstants {
-    fn new(res: &shared::res::SVTPushConsts, settings: &shared::res::WindowManagerSettings) -> Self {
+    fn new(
+        res: &shared::res::SVTPushConsts,
+        settings: &shared::res::WindowManagerSettings,
+    ) -> Self {
         let mode = if settings.window_mode != WindowMode::Windowed {
             0.0
-        }
-        else {
+        } else {
             1.0
         };
         Self {
@@ -51,11 +53,10 @@ impl PushConstants {
             root_size: res.root_size,
             root_min: res.root_min,
             fov_y_deg: 70.0,
-            mode: mode
+            mode: mode,
         }
     }
 }
-
 
 #[derive(Resource)]
 struct ComputeBindGroups {
@@ -83,17 +84,21 @@ impl Material for ComputeRenderMaterial {
     fn alpha_mode(&self) -> AlphaMode {
         AlphaMode::Blend
     }
-
 }
-
 
 pub struct ComputeSystemPlugin;
 
 impl Plugin for ComputeSystemPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(renderer::ComputeRendererPlugin)
-        .add_systems(Startup, setup_renderer)
-        .add_systems(Update, switch_buffer);
+            .add_systems(
+                OnEnter(shared::GameState::InGame),
+                setup_renderer.run_if(not(resource_exists::<shared::res::IsGamePrepared>)),
+            )
+            .add_systems(
+                Update,
+                switch_buffer.run_if(in_state(shared::GameState::InGame)),
+            );
     }
 }
 //Setup the images and depth texture to render to and connect to the mat quad.
@@ -117,7 +122,7 @@ fn setup_renderer(
     // Add material to the mesh
     image.texture_descriptor.usage =
         TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
-  //  image.texture_descriptor.sample_count =1;
+    //  image.texture_descriptor.sample_count =1;
     let image_tex = images.add(image.clone());
     let image_buff = images.add(image);
 
@@ -125,8 +130,8 @@ fn setup_renderer(
         render_texture: image_tex,
         render_buffer: image_buff,
     });
+    commands.insert_resource(shared::res::IsGamePrepared);
 }
-
 
 // Switch texture to display every frame to show the one that was written to most recently.
 fn switch_buffer(

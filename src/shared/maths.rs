@@ -22,7 +22,6 @@ pub fn screen_size_quad(dist: f32, fov: f32, dim: Vec4,) -> Vec2 {
 
 }
 
-
 #[inline]
 pub fn ileave_two0(input: usize) -> usize {
     input & 0b11 // Only 2 bits per axis (values 0–3)

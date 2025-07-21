@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
-
+use super::shared;
 // Since it's possible to have multiple `Actions` components, you need
 // to define a marker and derive `InputContext` trait.
 #[derive(InputContext)]
@@ -43,14 +43,17 @@ fn bind_actions(
     actions.bind::<Sprint>().to(KeyCode::ShiftLeft);
 }
 
-fn apply_rotate(trigger: Trigger<Fired<Rotate>>, mut players: Query<&mut Transform>) {
+fn apply_rotate(trigger: Trigger<Fired<Rotate>>, mut players: Query<&mut Transform>, state: Res<State<shared::GameState>>) {
+    if state.get() == &shared::GameState::Paused {
+        return;
+    }
     let mut transform = players.get_mut(trigger.target()).unwrap();
     let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
 
     yaw += trigger.value.x.to_radians();
     pitch += trigger.value.y.to_radians();
     pitch = pitch.clamp((-89.0f32).to_radians(), (89.0f32).to_radians());
-
+    
     transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
 }
 
@@ -59,8 +62,13 @@ fn apply_movement(
     flycam_act: Single<&Actions<FlyCam>>,
     mut transforms: Query<&mut Transform>,
     time: Res<Time>,
+    state: Res<State<shared::GameState>>,
     mut settings: ResMut<FlycamSettings>,
 ) {
+    if state.get() == &shared::GameState::Paused {
+        return;
+    }
+
     let actions = flycam_act.into_inner();
     let mut transform = transforms.get_mut(trigger.target()).unwrap();
 

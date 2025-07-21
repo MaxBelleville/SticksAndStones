@@ -2,6 +2,8 @@
 
 use bevy::{prelude::*, render::extract_resource::ExtractResource, window::{PresentMode, WindowMode}};
 
+use super::GameState;
+
 
 #[derive(Resource, Debug, Clone,ExtractResource)]
 pub struct WindowManagerSettings {
@@ -25,6 +27,15 @@ impl Default for WindowManagerSettings {
         }
     }
 }
+
+//Marker to ensure first setup of world
+#[derive(Resource)]
+pub struct IsGamePrepared;
+
+
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Hash,ExtractResource)]
+pub struct ExtractedGameState(pub GameState);
+
 
 #[derive(Resource, Clone, ExtractResource, Default)]
 pub struct SVTPushConsts { //Theoretically should be moved to the contree and renamed and loaded like window_manager.

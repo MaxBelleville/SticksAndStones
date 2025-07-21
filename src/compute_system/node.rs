@@ -56,7 +56,11 @@ impl render_graph::Node for ComputeRendererNode {
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), render_graph::NodeRunError> {
-        let comp_bind = world.resource::<ComputeBindGroups>();
+         let Some(comp_bind) = world.get_resource::<ComputeBindGroups>() else {
+            // Avoid panicking — skip this frame
+            return Ok(());
+        };
+
         let pipeline_cache = world.resource::<PipelineCache>();
         let pipeline = world.resource::<render_pipe::ComputeRenderPipeline>();
         let settings = world.resource::<shared::res::WindowManagerSettings>();

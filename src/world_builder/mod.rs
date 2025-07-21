@@ -7,6 +7,8 @@ use bevy_rand::prelude::ChaCha12Rng;
 use bevy_rand::traits::ForkableSeed;
 use bevy_rand::traits::SeedSource;
 
+use crate::shared::res::SVTPushConsts;
+
 use super::shared;
 use super::contree;
 use super::flycam;
@@ -26,10 +28,11 @@ impl PluginGroup for WorldBuilderPlugins {
             .add(flycam::FlycamPlugin)
             .add( AtmospherePlugin)
             .add( MaterialPlugin::<compute_system::ComputeRenderMaterial>::default())
-            .add(compute_system::ComputeSystemPlugin)
             .add(enviroment::EnviromentPlugin)
             .add(chunks::ChunkManagerPlugin)
             .add(events::handler::EventHandlerPlugin)
+            .add(compute_system::ComputeSystemPlugin)
+ 
     }
 }
 
@@ -37,7 +40,8 @@ struct WorldBuilderPlugin;
 
 impl Plugin for WorldBuilderPlugin {
     fn build(&self, app: &mut App) {   
-        app.insert_resource(WorldBuilderResource::default()).
+        app.insert_resource(SVTPushConsts::default()).
+        insert_resource(WorldBuilderResource::default()).
         add_systems(Startup, setup);
     }
 }

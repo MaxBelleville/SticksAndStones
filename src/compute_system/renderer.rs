@@ -26,16 +26,17 @@ pub struct ComputeRendererPlugin;
 
 impl Plugin for ComputeRendererPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractResourcePlugin::<ComputeRenderImages>::default());
-        app.add_plugins(ExtractResourcePlugin::<shared::res::SVTPushConsts>::default());
-        app.add_plugins(ExtractResourcePlugin::<shared::res::WindowManagerSettings>::default());
-        app.add_plugins(ExtractResourcePlugin::<shared::res::AtmosphereUniformData>::default());
+        app.add_plugins(ExtractResourcePlugin::<ComputeRenderImages>::default())
+        .add_plugins(ExtractResourcePlugin::<shared::res::SVTPushConsts>::default())
+        .add_plugins(ExtractResourcePlugin::<shared::res::WindowManagerSettings>::default())
+        .add_plugins(ExtractResourcePlugin::<shared::res::AtmosphereUniformData>::default())
+        .add_plugins(ExtractResourcePlugin::<shared::res::ExtractedGameState>::default());
 
         //app.add_plugins(ExtractResourcePlugin::<>::default());
         let render_app = app.sub_app_mut(RenderApp);
         render_app.add_systems(
             Render,
-            prepare_bind_group.in_set(RenderSet::PrepareBindGroups),
+            prepare_bind_group.in_set(RenderSet::PrepareBindGroups).run_if(in_extracted_game_state),
         );
 
         let mut render_graph = render_app.world_mut().resource_mut::<RenderGraph>();
@@ -46,6 +47,10 @@ impl Plugin for ComputeRendererPlugin {
         let render_app = app.sub_app_mut(RenderApp);
         render_app.init_resource::<ComputeRenderPipeline>();
     }
+}
+
+fn in_extracted_game_state(resource: Res<shared::res::ExtractedGameState>) -> bool {
+    resource.0 == shared::GameState::InGame
 }
 
 fn prepare_bind_group(
@@ -64,8 +69,7 @@ fn prepare_bind_group(
         
         let cam_pos = view.world_from_view.translation();
         let rot = Mat3::from_quat(view.world_from_view.rotation());
-
-
+     
         let camera_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("EnviromentData"),
             contents: bytemuck::bytes_of(&EnviromentData {
