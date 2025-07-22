@@ -8,5 +8,5 @@ impl Plugin for ChunkManagerPlugin {
 }
 
 fn init_chunk() {
-
+    //Do nothing for now.
 }

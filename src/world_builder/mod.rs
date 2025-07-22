@@ -46,10 +46,21 @@ impl Plugin for WorldBuilderPlugin {
     }
 }
 
-fn setup(mut rng: GlobalEntropy<ChaCha12Rng>, mut state: ResMut<WorldBuilderResource>) {
+fn setup(mut rng: GlobalEntropy<ChaCha12Rng>, mut state: ResMut<WorldBuilderResource>, mut push: ResMut<SVTPushConsts>) {
     let binding = rng.fork_seed();
     let seed: &[u8; 32] = binding.get_seed();
     state.noise_seed = shared::maths::get_noise_seed(seed);
+    for z in -1..3 {
+        for y in -1..3 {
+            for x in -1..3 {
+                state.contree.insert(ivec3(x, y, z), Some(1),None); 
+            }
+        }
+    }
+    state.contree.print_root();
+    (state.file_data,state.gpu_data) = state.contree.compress_data();
+    push.root_min = state.contree.get_root_min().as_vec3();
+    push.root_size = state.contree.get_root_size() as f32;
 }
 
 #[derive(Resource,Default)]

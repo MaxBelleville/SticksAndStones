@@ -75,6 +75,9 @@ pub struct ComputeRenderMaterial {
     #[texture(0)]
     #[sampler(1)]
     pub render_texture: Handle<Image>,
+    #[uniform(2)] // use any unused group-binding combo
+    pub is_paused: f32, // float works better than bool for WGSL
+
 }
 
 impl Material for ComputeRenderMaterial {

@@ -30,61 +30,31 @@ impl Plugin for EnviromentPlugin {
         });
 
         app.insert_resource(atmo_model)
-            .insert_resource(AtmosphereSettings {
-                resolution: 256,
-                dithering: true,
-                ..default()
-            })
-            .insert_resource(CycleTimer(Timer::new(
-                std::time::Duration::from_millis(100),
-                TimerMode::Repeating,
-            )))
-            .insert_resource(shared::res::AtmosphereUniformData {
-                sun_dir: Vec3::Y,
-                time: 0.0,
-            })
-            .add_systems(
-                OnEnter(shared::GameState::InGame),
-                setup_enviroment.run_if(not(resource_exists::<shared::res::IsGamePrepared>)),
-            )
-            .add_systems(
-                Update,
-                (update_time,daylight_cycle).run_if(in_state(shared::GameState::InGame)),
-            );
+        .insert_resource(AtmosphereSettings {
+            resolution: 256,
+            dithering: true,
+            ..default()
+        })
+        .insert_resource(CycleTimer(Timer::new(
+            std::time::Duration::from_millis(100),
+            TimerMode::Repeating,
+        )))
+        .insert_resource(shared::res::AtmosphereUniformData {
+            sun_dir: Vec3::Y,
+            time: 0.0,
+        })
+        .add_systems(
+            OnEnter(shared::GameState::InGame),
+            setup_enviroment.run_if(not(resource_exists::<shared::res::IsGamePrepared>)),
+        )
+        .add_systems(
+            Update,
+            (update_time, daylight_cycle).run_if(in_state(shared::GameState::InGame)),
+        )
+        .add_systems(OnEnter(shared::GameState::Paused), pause_blur)
+        .add_systems(OnExit(shared::GameState::Paused), ingame_unblur);
     }
 }
-fn update_time(time: Res<Time>,mut atmo_data: ResMut<shared::res::AtmosphereUniformData>) {
-    atmo_data.time += time.delta_secs();
-}
-
-// We can edit the Atmosphere resource and it will be updated automatically
-fn daylight_cycle(
-    mut atmosphere: AtmosphereMut<Nishita>,
-    mut query: Query<(&mut Transform, &mut DirectionalLight), With<shared::components::Sun>>,
-    mut timer: ResMut<CycleTimer>,
-    mut atmo_data: ResMut<shared::res::AtmosphereUniformData>,
-    time: Res<Time>,
-) {
-    timer.0.tick(time.delta());
-
-    if timer.0.finished() {
-        let t = atmo_data.time  / 40.0;
-        let theta = t % std::f32::consts::TAU;
-
-        let sun_dir = Vec3::new(theta.cos(), theta.sin(), 0.3 * theta.cos()).normalize();
-        atmo_data.sun_dir = sun_dir;
-
-        atmosphere.sun_position = sun_dir;
-        if let Some(Ok((mut light_trans, mut directional))) = query.single_mut().into() {
-            // Light points opposite to sun position
-            light_trans.rotation = Quat::from_rotation_arc(Vec3::Y, -sun_dir);
-
-            // Illumination fades in/out near horizon
-            directional.illuminance = sun_dir.y.max(0.0).powf(2.0) * lux::RAW_SUNLIGHT;
-        }
-    }
-}
-
 // Simple environment
 fn setup_enviroment(
     mut commands: Commands,
@@ -115,7 +85,7 @@ fn setup_enviroment(
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::default())),
         MeshMaterial3d(materials2.add(StandardMaterial::from(Color::srgb(0.8, 0.0, 0.8)))),
-          Transform::from_xyz(0., 0., 0.).with_scale(vec3(0.5,0.5,0.5)),
+        Transform::from_xyz(0., 0., 0.).with_scale(vec3(0.5, 0.5, 0.5)),
     ));
     // Spawn our camera
     commands
@@ -126,7 +96,6 @@ fn setup_enviroment(
                     .into(),
                 ..default()
             },
-      
             AtmosphereCamera::default(), // Marks camera as having a skybox, by default it doesn't specify the render layers the skybox can be seen on
             Actions::<flycam::FlyCam>::default(), // Marks camera as for the flycam plugin
             Projection::from(PerspectiveProjection {
@@ -144,10 +113,73 @@ fn setup_enviroment(
                 // Create a dummy image to use as the render_texture
                 MeshMaterial3d(materials.add(compute_system::ComputeRenderMaterial {
                     render_texture: render_texture_handle,
+                    is_paused: 0.0
                 })),
                 Transform::from_xyz(0., 0., -distance),
                 compute_system::ComputePlaneComponent,
                 NotShadowCaster,
             ));
         });
+}
+
+
+fn update_time(time: Res<Time>, mut atmo_data: ResMut<shared::res::AtmosphereUniformData>) {
+    atmo_data.time += time.delta_secs();
+}
+
+// We can edit the Atmosphere resource and it will be updated automatically
+fn daylight_cycle(
+    mut atmosphere: AtmosphereMut<Nishita>,
+    mut query: Query<(&mut Transform, &mut DirectionalLight), With<shared::components::Sun>>,
+    mut timer: ResMut<CycleTimer>,
+    mut atmo_data: ResMut<shared::res::AtmosphereUniformData>,
+    time: Res<Time>,
+) {
+    timer.0.tick(time.delta());
+
+    if timer.0.finished() {
+        let t = atmo_data.time / 40.0;
+        let theta = t % std::f32::consts::TAU;
+
+        let sun_dir = Vec3::new(theta.cos(), theta.sin(), 0.3 * theta.cos()).normalize();
+        atmo_data.sun_dir = sun_dir;
+
+        atmosphere.sun_position = sun_dir;
+        if let Some(Ok((mut light_trans, mut directional))) = query.single_mut().into() {
+            // Light points opposite to sun position
+            light_trans.rotation = Quat::from_rotation_arc(Vec3::Y, -sun_dir);
+
+            // Illumination fades in/out near horizon
+            directional.illuminance = sun_dir.y.max(0.0).powf(2.0) * lux::RAW_SUNLIGHT;
+        }
+    }
+}
+
+fn pause_blur(mut commands: Commands,  mut materials: ResMut<Assets<compute_system::ComputeRenderMaterial>>,
+    mesh_query: Query<&MeshMaterial3d<compute_system::ComputeRenderMaterial>, With<compute_system::ComputePlaneComponent>>) {
+    commands.insert_resource(AtmosphereSettings {
+            resolution: 128,
+            dithering: true,
+            ..default()
+        });
+    if let Ok(mesh) = mesh_query.single() {
+          if let Some(material) = materials.get_mut(&mesh.0) {
+            material.is_paused = 1.0;
+          }
+    }
+}
+
+
+fn ingame_unblur(mut commands: Commands, mut materials: ResMut<Assets<compute_system::ComputeRenderMaterial>>,
+    mesh_query: Query<&MeshMaterial3d<compute_system::ComputeRenderMaterial>, With<compute_system::ComputePlaneComponent>>) {
+    commands.insert_resource(AtmosphereSettings {
+            resolution: 256,
+            dithering: true,
+            ..default()
+        });
+    if let Ok(mesh) = mesh_query.single() {
+          if let Some(material) = materials.get_mut(&mesh.0) {
+            material.is_paused = 0.0;
+          }
+    }
 }

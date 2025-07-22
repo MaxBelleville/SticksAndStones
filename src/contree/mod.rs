@@ -127,7 +127,9 @@ impl Contree {
         new_root.subdivide();
 
         for (world_pos, mat, lod_depth) in voxel_data {
-            let new_pos = world_pos + IVec3::splat(new_size / 2);
+            let offset = IVec3::splat(new_size / 2 - old_size as i32 / 2);
+            let new_pos = world_pos + offset;
+            println!("Remap: old={:?} → new={:?}, lod_depth -> {:?}", world_pos, new_pos, lod_depth);
             new_root.insert_local(new_pos, Some(mat), lod_depth);
         }
 
@@ -159,7 +161,7 @@ impl Contree {
            self.root.insert_local(normalized, material_id, curr_an_level);
         }
         else {
-           self.root.insert_local(normalized, material_id, u8::MAX);
+           self.root.insert_local(normalized, material_id, 0);
         }
 
         self.root.update_cache();

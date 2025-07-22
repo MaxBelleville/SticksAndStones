@@ -34,8 +34,14 @@ impl Hash for LeafData {
             }
             LeafData::Arr(arr) => {
                 2u8.hash(state);
-                for val in arr.iter() {
-                    val.hash(state);
+                for (i, val) in arr.iter().enumerate() {
+                    match val {
+                        Some(v) => {
+                            i.hash(state); // include index
+                            v.hash(state); // include material
+                        }
+                        None => {} // skip empty cells to normalize sparse arrays
+                    }
                 }
             }
         }
@@ -74,18 +80,35 @@ impl LeafData {
         }
     }
 
-    pub fn get_mask(&self) -> u64 {
+    pub fn get_material_mask(&self) -> (u64, u32) {
         match self {
-            LeafData::Empty => 0,
-            LeafData::Uniform(_) => u64::MAX,
-            LeafData::Arr(arr) => {
+            LeafData::Empty => (0, NOT_A_LEAF_FLAG), // no material at all
+
+            LeafData::Uniform(mat) => (u64::MAX, *mat as u32), // fully uniform
+
+            LeafData::Arr(array) => {
                 let mut mask = 0u64;
-                for (i, val) in arr.iter().enumerate() {
-                    if val.is_some() {
+                let mut uniform_mat: Option<u8> = None;
+
+                for (i, val) in array.iter().enumerate() {
+                    if let Some(m) = val {
                         mask |= 1 << i;
+                        match uniform_mat {
+                            None => uniform_mat = Some(*m),
+                            Some(prev) if prev != *m => {
+                                uniform_mat = Some(255); // mixed
+                            }
+                            _ => {}
+                        }
                     }
                 }
-                mask
+
+                let encoded = match uniform_mat {
+                    Some(255) | None => NOT_A_LEAF_FLAG,
+                    Some(val) => val as u32,
+                };
+
+                (mask, encoded)
             }
         }
     }
@@ -153,11 +176,11 @@ impl LeafData {
     pub fn print(
         &self,
         depth: usize,
-        indent: &str,
         tree_scale: usize,
         root_size: usize,
         path: &mut Vec<Option<u8>>,
     ) {
+        let indent = "  ".repeat(depth * 2);
         match self {
             LeafData::Empty => {}
             LeafData::Uniform(mat) => {

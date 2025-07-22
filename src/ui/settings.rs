@@ -104,6 +104,7 @@ fn settings_menu_setup(mut commands: Commands) {
             justify_content: JustifyContent::Center,
             ..default()
         },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75).into()),
         OnSettingsMenuScreen,
         children![(
             Node {
@@ -111,6 +112,7 @@ fn settings_menu_setup(mut commands: Commands) {
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderRadius::all(Val::Px(10.0)),
             BackgroundColor(CRIMSON.into()),
             Children::spawn(SpawnIter(
                 [
@@ -121,6 +123,7 @@ fn settings_menu_setup(mut commands: Commands) {
                 .into_iter()
                 .map(move |(action, text)| {
                     (
+                        BorderRadius::all(Val::Px(10.0)),
                         Button,
                         button_node.clone(),
                         BackgroundColor(ButtonColors::NORMAL),
@@ -163,6 +166,7 @@ fn display_settings_menu_setup(mut commands: Commands, display_quality: Res<Disp
             justify_content: JustifyContent::Center,
             ..default()
         },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75).into()),
         OnDisplaySettingsMenuScreen,
         children![(
             Node {
@@ -170,6 +174,7 @@ fn display_settings_menu_setup(mut commands: Commands, display_quality: Res<Disp
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderRadius::all(Val::Px(10.0)),
             BackgroundColor(CRIMSON.into()),
             children![
                 // Create a new `Node`, this time not setting its `flex_direction`. It will
@@ -191,6 +196,7 @@ fn display_settings_menu_setup(mut commands: Commands, display_quality: Res<Disp
                             ] {
                                 let mut entity = parent.spawn((
                                     Button,
+                                    BorderRadius::all(Val::Px(10.0)),
                                     Node {
                                         width: Val::Px(150.0),
                                         height: Val::Px(65.0),
@@ -212,6 +218,7 @@ fn display_settings_menu_setup(mut commands: Commands, display_quality: Res<Disp
                 ),
                 // Display the back button to return to the settings screen
                 (
+                    BorderRadius::all(Val::Px(10.0)),
                     Button,
                     button_node(),
                     BackgroundColor(ButtonColors::NORMAL),
@@ -250,6 +257,7 @@ fn sound_settings_menu_setup(mut commands: Commands, volume: Res<Volume>) {
             justify_content: JustifyContent::Center,
             ..default()
         },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75).into()),
         OnSoundSettingsMenuScreen,
         children![(
             Node {
@@ -257,6 +265,7 @@ fn sound_settings_menu_setup(mut commands: Commands, volume: Res<Volume>) {
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderRadius::all(Val::Px(10.0)),
             BackgroundColor(CRIMSON.into()),
             children![
                 (
@@ -271,6 +280,7 @@ fn sound_settings_menu_setup(mut commands: Commands, volume: Res<Volume>) {
                             for volume_setting in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] {
                                 let mut entity = parent.spawn((
                                     Button,
+                                    BorderRadius::all(Val::Px(5.0)),
                                     Node {
                                         width: Val::Px(30.0),
                                         height: Val::Px(65.0),
@@ -288,6 +298,7 @@ fn sound_settings_menu_setup(mut commands: Commands, volume: Res<Volume>) {
                 ),
                 (
                     Button,
+                    BorderRadius::all(Val::Px(10.0)),
                     button_node,
                     BackgroundColor(ButtonColors::NORMAL),
                     MenuButtonAction::BackToSettings,

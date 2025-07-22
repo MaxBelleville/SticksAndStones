@@ -18,7 +18,7 @@ pub fn screen_size_quad(dist: f32, fov: f32, dim: Vec4,) -> Vec2 {
     let plane_height = 2.0 * dist * (fov / 2.0).tan();
     let plane_width = plane_height * aspect_ratio;
     //Half size is not perfect so mild adjustment are needed to fit screen.
-    Vec2::new(plane_width / 1.995, plane_height / 2.00)
+    Vec2::new(plane_width / 1.95, plane_height / 2.00)
 
 }
 

@@ -76,6 +76,7 @@ fn main_menu_setup(
             justify_content: JustifyContent::Center,
             ..default()
         },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75).into()),
         OnMainMenuScreen,
         children![(
             Node {
@@ -83,11 +84,12 @@ fn main_menu_setup(
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderRadius::all(Val::Px(10.0)),
             BackgroundColor(CRIMSON.into()),
             children![
                 // Display the game name
                 (
-                    Text::new("Bevy Game Menu UI"),
+                    Text::new("Sticks & Stones"),
                     TextFont {
                         font_size: 67.0,
                         ..default()
@@ -105,6 +107,7 @@ fn main_menu_setup(
                 (
                     Button,
                     button_node.clone(),
+                    BorderRadius::all(Val::Px(10.0)),
                     BackgroundColor(ButtonColors::NORMAL),
                     MenuButtonAction::Play,
                     children![
@@ -118,6 +121,7 @@ fn main_menu_setup(
                 ),
                 (
                     Button,
+                    BorderRadius::all(Val::Px(10.0)),
                     button_node.clone(),
                     BackgroundColor(ButtonColors::NORMAL),
                     MenuButtonAction::Settings,
@@ -132,6 +136,7 @@ fn main_menu_setup(
                 ),
                 (
                     Button,
+                    BorderRadius::all(Val::Px(10.0)),
                     button_node,
                     BackgroundColor(ButtonColors::NORMAL),
                     MenuButtonAction::Quit,
