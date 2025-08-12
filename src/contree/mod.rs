@@ -13,10 +13,12 @@ use super::shared;
     It can either be a leaf node with a material, or a non-leaf node with children.
     Each node can have up to 64 children, representing subdivisions of the space.
 */
+#[derive(Debug,Clone)]
 pub struct Contree {
     root: node::ContreeNode,
     max_size: usize, //multiple of 4
     chunks: HashMap<Vec<u8>,Box<node::ContreeNode>>,
+    offset: IVec3,
 }
     //-------------------------------------- INIT -----------------------------------------------//
 impl Default for Contree {
@@ -25,6 +27,7 @@ impl Default for Contree {
             root:  node::ContreeNode::default(),
             max_size: 1024, //This is basically 1024x1024x1024 or 1,073,741,824 (1 billion) possible voxels. 
             chunks: HashMap::new(),
+            offset: IVec3::ZERO,
         }
     }
 }
@@ -35,6 +38,7 @@ impl Contree {
             root:  node::ContreeNode::default(),
             max_size,
             chunks: HashMap::new(),
+            offset: IVec3::ZERO,
         }
     }
 
@@ -45,6 +49,7 @@ impl Contree {
             root,
             max_size,
             chunks: HashMap::new(),//TODO load chunks from root during deserialization.
+            offset: IVec3::ZERO,
         }
     }
     //------------------------------ GETTERS AND HELPERS --------------------------------------//
@@ -58,6 +63,10 @@ impl Contree {
 
     pub fn get_root_min(&self) -> IVec3 {
         IVec3::splat(-(self.root.get_voxel_extent() as i32) / 2)
+    }
+
+    pub fn get_offset(&self) -> IVec3 {
+        self.offset
     }
 
     pub fn is_out_of_bounds(&self, point: &IVec3) -> bool {
@@ -183,7 +192,7 @@ impl Contree {
 
     pub fn optomize(&mut self) {
         // 1. Trim single-octant layers
-        let _offset = self.trim_single_octant();
+        self.offset = self.trim_single_64();
 
         // 2. Collapse fully filled subtrees
         self.root.collapse_filled();
@@ -192,9 +201,9 @@ impl Contree {
         self.root.update_cache();
     }
 
-    pub fn trim_single_octant(&mut self) -> IVec3 {
+    pub fn trim_single_64(&mut self) -> IVec3 {
         let mut offset = IVec3::ZERO;
-
+        let old_min = self.get_root_min();
         // While root has exactly one non-empty child, trim
         loop {
             let root_size = self.get_root_size();
@@ -215,7 +224,7 @@ impl Contree {
                 if !child.is_empty() {
                     if non_empty.is_some() {
                         // More than one non-empty child, stop trimming
-                        return offset;
+                        return old_min + offset - self.get_root_min();
                     }
                     non_empty = Some(i);
                 }
@@ -235,7 +244,7 @@ impl Contree {
             self.root = std::mem::replace(&mut children[idx], node::ContreeNode::new(child_width));
         }
 
-        offset
+        old_min + offset - self.get_root_min()
     }
 
 
@@ -266,7 +275,7 @@ impl Contree {
             let mask_low = (node.child_mask & 0xFFFF_FFFF) as u32;
             let mask_high = (node.child_mask >> 32) as u32;
             println!(
-                "GPU Node {}: child_mask: low {:08X} high {:08X}, first_child_idx: {}, material: {}, not_a_leaf: {}",
+                "GPU Node {}: child_mask: low {:032b} high {:032b}, first_child_idx: {}, material: {}, not_a_leaf: {}",
                 i,
                 mask_low,
                 mask_high,
@@ -280,11 +289,12 @@ impl Contree {
         for node in gpu_data.iter() {
             let mask_low = (node.child_mask & 0xFFFF_FFFF) as u32;
             let mask_high = (node.child_mask >> 32) as u32;
-            packed_array.push(i32::from_ne_bytes(mask_low.to_ne_bytes()));
-            packed_array.push(i32::from_ne_bytes(mask_high.to_ne_bytes()));
-            packed_array.push(i32::from_ne_bytes(node.first_child_idx.to_ne_bytes()));
-            packed_array.push(i32::from_ne_bytes(node.material.to_ne_bytes()));
+            packed_array.push(mask_low as i32);
+            packed_array.push(mask_high as i32);
+            packed_array.push(node.first_child_idx as i32);
+            packed_array.push(node.material as i32);
         }
+        //Probably should only build if the size has changed/there's an offset
         self.rebuild_chunk_map();//Just incase 
         (bits, packed_array)
     }

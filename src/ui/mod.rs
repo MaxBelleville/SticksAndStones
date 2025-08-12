@@ -56,7 +56,7 @@ impl PluginGroup for UIPlugins {
             .add(splash::SplashPlugin)
             .add(menu::MenuPlugin)
             .add(settings::SettingsPlugin)
-        //.add( player::PlayerUIPlugin)
+            .add( player::PlayerUIPlugin)
     }
 }
 

@@ -18,6 +18,13 @@ pub struct ContreeNode {
     serialized_cache: Option<Vec<u8>>,
     gpu_nodes_cache: Option<Vec<res::SvoGpuNode>>,
 }
+struct StackItem<'a> {
+    node: &'a ContreeNode,
+    next_child: usize,            // next child index to process (0..64)
+    child_hashes: [u64; 64],      // filled as children finish
+    parent_slot: Option<usize>,   // index in parent's child array (None for root)
+}
+
 //----------------------------------------- INIT ------------------------------------------------//
 impl Default for ContreeNode {
     fn default() -> Self {
@@ -175,7 +182,17 @@ impl ContreeNode {
         let mut bit_writer = serialize::BitstreamWriter::new();
         let mut gpu_writer = serialize::GpuNodeWriter::new();
         let mut seen_hashes = HashMap::new();
-        serialize::serialize_nodes(self, &mut bit_writer, &mut gpu_writer, &mut seen_hashes);
+        let child_hashes = if let Some(children) = self.get_children() {
+            children
+                .iter()
+                .map(|c| c.hash_node(&[]))
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+        let hash: u64 = self.hash_node(&child_hashes);
+
+        serialize::serialize_nodes(self, hash, &mut bit_writer, &mut gpu_writer, &mut seen_hashes);
         (bit_writer.bits, gpu_writer.get_nodes().to_vec())
     }
 
@@ -191,11 +208,14 @@ impl ContreeNode {
         if self.update_cache || self.serialized_cache.is_none() || self.gpu_nodes_cache.is_none() {
             let mut bit_writer = serialize::BitstreamWriter::new();
             let mut gpu_writer = serialize::GpuNodeWriter::new();
-            let dagified = self.dagify(&mut HashMap::new());
+            let mut dag_cache = HashMap::new();
+            let (dagified, root_hash) = self.dagify(&mut dag_cache);
             let mut seen_hashes = HashMap::new();
 
+            
             serialize::serialize_nodes_dag(
                 &dagified,
+                root_hash,
                 &mut bit_writer,
                 &mut gpu_writer,
                 global_dag_cache,
@@ -291,53 +311,124 @@ impl ContreeNode {
 
     //------------------------------------ DAG & HASH -------------------------------------------//
     pub fn hash_node(&self, child_hashes: &[u64]) -> u64 {
-        let mut hasher = XxHash64::with_seed(0); // or any fixed seed
+        let mut hasher = XxHash64::with_seed(0);
         self.leaves.hash(&mut hasher);
         child_hashes.hash(&mut hasher);
         hasher.finish()
     }
 
-    pub fn dagify(&self, cache: &mut HashMap<u64, res::DagNode>) -> res::DagNode {
-        // Base case: leaf node
-        if self.children.is_none() {
-            let hash = self.hash_node(&[]);
-            println!("Dagify node hash: {:X} | deduplicated: {}", hash, cache.contains_key(&hash));
-            if let Some(shared) = cache.get(&hash) {
-                return Arc::clone(shared);
-            }
+     pub fn hash_leaf(&self) -> u64 {
+        let mut hasher = XxHash64::with_seed(0);
+        self.leaves.hash(&mut hasher);
+        hasher.finish()
+    }
 
-            let new_node = Arc::new(self.clone());
-            cache.insert(hash, Arc::clone(&new_node));
-            return new_node;
-        }
+    pub fn compute_hashes(&self) -> HashMap<usize, u64> {
+        let mut map: HashMap<usize, u64> = HashMap::new();
+        let mut stack: Vec<StackItem> = Vec::new();
 
-        // Build children and record their hashes
-        let children = self.children.as_ref().unwrap();
-        let mut child_hashes = [0u64; 64];
-        let child_array: [ContreeNode; 64] = std::array::from_fn(|i| {
-            let child = &children[i];
-            let arc_node = child.dagify(cache);
-            child_hashes[i] = cache
-                .iter()
-                .find(|(_, v)| Arc::ptr_eq(v, &arc_node))
-                .map(|(k, _)| *k)
-                .unwrap_or_else(|| arc_node.hash_node(&[])); // fallback in case not cached
-            (*arc_node).clone()
+        stack.push(StackItem {
+            node: self,
+            next_child: 0,
+            child_hashes: [0u64; 64],
+            parent_slot: None,
         });
 
-        // Construct deduplicated node
-        let mut new_node = self.clone();
-        new_node.children = Some(Box::new(child_array));
-        let hash = new_node.hash_node(&child_hashes);
-          println!("WithChild Dagify node hash: {:X} | deduplicated: {}", hash, cache.contains_key(&hash));
-        if let Some(shared) = cache.get(&hash) {
-            return Arc::clone(shared);
+        while let Some(top) = stack.last_mut() {
+            // If node has children, process them in index order
+            if top.next_child < 64 {
+                if let Some(children) = top.node.get_children() {
+                    let idx = top.next_child;
+                    top.next_child += 1;
+
+                    if children[idx].is_empty() {
+                        // empty child → hash 0 (or some sentinel)
+                        top.child_hashes[idx] = 0u64;
+                        continue;
+                    } else {
+                        // push child frame; child's parent_slot is idx
+                        let child_ref: &ContreeNode = &children[idx];
+                        stack.push(StackItem {
+                            node: child_ref,
+                            next_child: 0,
+                            child_hashes: [0u64; 64],
+                            parent_slot: Some(idx),
+                        });
+                        continue;
+                    }
+                } else {
+                    // no children -> mark as "done children" so we fall into hash compute
+                    top.next_child = 64;
+                    continue;
+                }
+            }
+
+            // All children processed for 'top'; compute full-subtree hash for this node
+            let item = stack.pop().unwrap();
+            let mut hasher = XxHash64::with_seed(0); // same seed you use elsewhere
+            // include leaf data (your existing Hash impl for LeafData)
+            item.node.leaves.hash(&mut hasher);
+
+            // include child hashes in fixed order (0..63)
+            item.child_hashes.hash(&mut hasher);
+
+            let hash = hasher.finish();
+
+            // store in map keyed by node address
+            let node_key = (item.node as *const ContreeNode) as usize;
+            map.insert(node_key, hash);
+
+            // attach hash to parent slot if any
+            if let Some(slot) = item.parent_slot {
+                // parent is now the new top (if present)
+                if let Some(parent) = stack.last_mut() {
+                    parent.child_hashes[slot] = hash;
+                }
+            }
         }
 
-        let shared_node = Arc::new(new_node);
-        cache.insert(hash, Arc::clone(&shared_node));
-        shared_node
+        map
     }
+
+
+    /// Returns the canonical Arc-ed DAG node, inserting into cache if new.
+    pub fn dagify(
+        &self,
+        cache: &mut HashMap<u64, Arc<ContreeNode>>
+    ) -> (Arc<ContreeNode>, u64) {
+        if self.children.is_none() {
+            let hash = self.hash_node(&[]);
+            if let Some(existing) = cache.get(&hash) {
+                return (Arc::clone(existing), hash);
+            }
+            let new_node = Arc::new(self.clone());
+            cache.insert(hash, Arc::clone(&new_node));
+            return (new_node, hash);
+        }
+
+        let children = self.children.as_ref().unwrap();
+        let mut new_children: [Arc<ContreeNode>; 64] = std::array::from_fn(|_| Arc::new(ContreeNode::default()));
+        let mut child_hashes = [0u64; 64];
+
+        for i in 0..64 {
+            let (child_arc, child_hash) = children[i].dagify(cache);
+            child_hashes[i] = child_hash;
+            new_children[i] = child_arc;
+        }
+
+        let mut new_node = self.clone();
+        new_node.children = Some(Box::new(std::array::from_fn(|i| (*new_children[i]).clone())));
+
+        let hash = new_node.hash_node(&child_hashes);
+        if let Some(existing) = cache.get(&hash) {
+            return (Arc::clone(existing), hash);
+        }
+
+        let canonical = Arc::new(new_node);
+        cache.insert(hash, Arc::clone(&canonical));
+        (canonical, hash)
+    }
+
     //------------------------------------- DEBUGGIN -------------------------------------------//
 
     pub fn print_tree(&self, depth: usize, root_size: usize, path: &mut Vec<Option<u8>>) {

@@ -1,19 +1,17 @@
 
 
-use std::{hash::{Hash, Hasher}, sync::Arc};
+use std::hash::{Hash, Hasher};
 
-use super::{node,shared};
+use super::shared;
 
 pub const NOT_A_LEAF_FLAG: u32 = 1 << 31;
+pub const MATERIAL_MASK: u32 = 0xFF; // Lower 8 bits
 #[derive(Clone, Copy, Default,Debug)]
 pub struct SvoGpuNode {
     pub child_mask: u64,        // 64 bits = one per child(or leaf in array) (4x4x4)
     pub first_child_idx: u32,   // index of the first child(or leaf in array) (flat array)
     pub material: u32,          // material ID or surface info max value 255 = leaf element value to be used later ex grass
 }//Given that material from contree_node is u8, we can have reserved bits
-
-pub type DagNode = Arc<node::ContreeNode>;
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LeafData {
@@ -22,7 +20,8 @@ pub enum LeafData {
     Arr(Box<[Option<u8>; 64]>), // Per-voxel material
 }
 
-impl Hash for LeafData {
+
+impl Hash for LeafData { // Used in hasher
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             LeafData::Empty => {
@@ -33,14 +32,20 @@ impl Hash for LeafData {
                 val.hash(state);
             }
             LeafData::Arr(arr) => {
-                2u8.hash(state);
-                for (i, val) in arr.iter().enumerate() {
-                    match val {
-                        Some(v) => {
-                            i.hash(state); // include index
-                            v.hash(state); // include material
-                        }
-                        None => {} // skip empty cells to normalize sparse arrays
+                // compute mask then compacted materials
+                let mut mask: u64 = 0;
+                for (i, v) in arr.iter().enumerate() {
+                    if v.is_some() { mask |= 1 << i; }
+                }
+                // include the mask (so sparse layout is unambiguous)
+                mask.hash(state);
+
+                // include the compacted sequence of (index, material) OR only material in order
+                for i in 0..64 {
+                    if let Some(mat) = arr[i] {
+                        // include slot index for absolute clarity (optional)
+                        i.hash(state);
+                        mat.hash(state);
                     }
                 }
             }
@@ -72,6 +77,7 @@ impl LeafData {
         }
     }
 
+
     pub fn get_full(&self) -> Box<[Option<u8>; 64]> {
         match self {
             LeafData::Empty => Box::new([None; 64]),
@@ -88,27 +94,12 @@ impl LeafData {
 
             LeafData::Arr(array) => {
                 let mut mask = 0u64;
-                let mut uniform_mat: Option<u8> = None;
-
                 for (i, val) in array.iter().enumerate() {
-                    if let Some(m) = val {
+                    if let Some(_m) = val {
                         mask |= 1 << i;
-                        match uniform_mat {
-                            None => uniform_mat = Some(*m),
-                            Some(prev) if prev != *m => {
-                                uniform_mat = Some(255); // mixed
-                            }
-                            _ => {}
-                        }
                     }
                 }
-
-                let encoded = match uniform_mat {
-                    Some(255) | None => NOT_A_LEAF_FLAG,
-                    Some(val) => val as u32,
-                };
-
-                (mask, encoded)
+                (mask, NOT_A_LEAF_FLAG)
             }
         }
     }

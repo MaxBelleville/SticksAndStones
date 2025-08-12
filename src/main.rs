@@ -1,5 +1,5 @@
 
-use bevy::prelude::*;
+use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*};
 use bevy_enhanced_input::prelude::*;
 use bevy_rand::prelude::{ChaCha12Rng, EntropyPlugin};
 use noisy_bevy::NoisyShaderPlugin;
@@ -36,6 +36,7 @@ fn main() {
         .insert_resource(Volume(7))
         .add_plugins((
             DefaultPlugins.set(ImagePlugin::default_nearest()),
+            FrameTimeDiagnosticsPlugin::default(),
             window_manager::WindowManagerPlugin,
             EntropyPlugin::<ChaCha12Rng>::default(),
             NoisyShaderPlugin,

@@ -30,7 +30,8 @@ impl Plugin for ComputeRendererPlugin {
         .add_plugins(ExtractResourcePlugin::<shared::res::SVTPushConsts>::default())
         .add_plugins(ExtractResourcePlugin::<shared::res::WindowManagerSettings>::default())
         .add_plugins(ExtractResourcePlugin::<shared::res::AtmosphereUniformData>::default())
-        .add_plugins(ExtractResourcePlugin::<shared::res::ExtractedGameState>::default());
+        .add_plugins(ExtractResourcePlugin::<shared::res::ExtractedGameState>::default())
+        .add_plugins(ExtractResourcePlugin::<shared::res::WorldBuilderResource>::default());
 
         //app.add_plugins(ExtractResourcePlugin::<>::default());
         let render_app = app.sub_app_mut(RenderApp);
@@ -61,6 +62,7 @@ fn prepare_bind_group(
     compute_images: Res<ComputeRenderImages>,
     settings: Res<shared::res::WindowManagerSettings>,
     push_res: Res<shared::res::SVTPushConsts>,
+    world_data: Res<shared::res::WorldBuilderResource>,
     atmo_data: Res<shared::res::AtmosphereUniformData>,
     render_device: Res<RenderDevice>,
 ) {
@@ -94,10 +96,10 @@ fn prepare_bind_group(
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
-        let int_data: Vec<i32> = vec![1, 2, 3, 4, 5];
+        
         let svt_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("SVTArray"),
-            contents: bytemuck::cast_slice(&int_data),
+            contents: bytemuck::cast_slice(&world_data.gpu_data),
             usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
         });
 

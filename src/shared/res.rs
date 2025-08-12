@@ -2,7 +2,8 @@
 
 use bevy::{prelude::*, render::extract_resource::ExtractResource, window::{PresentMode, WindowMode}};
 
-use super::GameState;
+
+use super::{contree,GameState};
 
 
 #[derive(Resource, Debug, Clone,ExtractResource)]
@@ -36,6 +37,13 @@ pub struct IsGamePrepared;
 #[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Hash,ExtractResource)]
 pub struct ExtractedGameState(pub GameState);
 
+#[derive(Resource,Default,Clone,ExtractResource)]
+pub struct WorldBuilderResource {
+    pub noise_seed: Vec3,
+    pub contree: contree::Contree,
+    pub gpu_data: Vec<i32>,
+    pub file_data: Vec<u8>,
+}
 
 #[derive(Resource, Clone, ExtractResource, Default)]
 pub struct SVTPushConsts { //Theoretically should be moved to the contree and renamed and loaded like window_manager.

@@ -1,10 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::{HashMap, VecDeque}, u32};
 
-
-use super::{node,res};
-
-
-
+use super::{node, res};
+use twox_hash::XxHash64;
 pub struct BitstreamWriter {
     pub bits: Vec<u8>,
     pub bit_offset: usize,
@@ -150,64 +147,45 @@ impl<'a> BitstreamReader<'a> {
     }
 }
 
-
 pub struct GpuNodeWriter {
-    pub nodes: Vec<res::SvoGpuNode>,
-    pub seen_gpu: HashMap<u64, usize>,
+    pub nodes: Vec<res::SvoGpuNode>
+}
+#[derive(Debug, Clone)]
+enum QueuedNode<'a> {
+    Internal(&'a node::ContreeNode, u64, Option<usize>),
+    Dedupe(usize, usize),
+    LeafBlock(&'a res::LeafData, u64,usize),
 }
 
 impl GpuNodeWriter {
     pub fn new() -> Self {
-        GpuNodeWriter { nodes: Vec::new(),
-            seen_gpu: HashMap::new(), }
+        GpuNodeWriter {
+            nodes: Vec::new()
+        }
     }
-    
 
     /// Converts a single `ContreeNode` into a `SvoGpuNode`
-    pub fn make_gpu_node(
-        &self,
-        node: &node::ContreeNode,
-        first_child_idx: u32,
-    ) -> res::SvoGpuNode {
-           let mut child_mask = 0u64;
-            let mut material = res::NOT_A_LEAF_FLAG;
+    pub fn make_gpu_node(&self, node: &node::ContreeNode) -> res::SvoGpuNode {
+        let mut child_mask = 0u64;
+        let mut material = res::NOT_A_LEAF_FLAG;
 
-            if let Some(children) = node.get_children() {
-                // Compute child_mask from which children are non-empty
-                for (i, child) in children.iter().enumerate() {
-                    if !child.is_empty() {
-                        child_mask |= 1 << i;
-                    }
+        if let Some(children) = node.get_children() {
+            for (i, child) in children.iter().enumerate() {
+                if !child.is_empty() {
+                    child_mask |= 1 << i;
                 }
-            } else {
-                // Leaf node: get mask and material from leaves
-                let (mask, mat) = node.get_leaves().get_material_mask();
-                child_mask = mask;
-                material = mat;
             }
-
-            res::SvoGpuNode {
-                child_mask,
-                first_child_idx,
-                material,
-            }
-    }
-
-    pub fn get_or_create_gpu_node(
-        &mut self,
-        node: &node::ContreeNode,
-        hash: u64,
-        first_child_idx: u32,
-    ) -> usize {
-        if let Some(&existing_idx) = self.seen_gpu.get(&hash) {
-            return existing_idx;
+        } else {
+            let (mask, mat) = node.get_leaves().get_material_mask();
+            child_mask = mask;
+            material = mat;
         }
 
-        let gpu_node = self.make_gpu_node(node, first_child_idx);
-        let idx = self.nodes.len();
-        self.nodes.push(gpu_node);
-        self.seen_gpu.insert(hash, idx);
-        idx
+        res::SvoGpuNode {
+            child_mask,
+            first_child_idx: u32::MAX, // Unset first_child_idx
+            material,
+        }
     }
 
     pub fn get_nodes(&self) -> &[res::SvoGpuNode] {
@@ -215,21 +193,19 @@ impl GpuNodeWriter {
     }
 }
 
-fn serialize_node_bitstream(
-    node: &node::ContreeNode,
-    bit_writer: &mut BitstreamWriter,
-) {
+fn serialize_node_bitstream(node: &node::ContreeNode, bit_writer: &mut BitstreamWriter) {
     let node_type = match (node.get_children(), node.get_leaves()) {
-        (None, res::LeafData::Empty) => 0b00, // air
+        (None, res::LeafData::Empty) => 0b00,      // air
         (None, res::LeafData::Uniform(_)) => 0b01, // solid
-        (None, res::LeafData::Arr(_)) => 0b11, // raw leaf array
-        (Some(_), _) => 0b10, // has children
+        (None, res::LeafData::Arr(_)) => 0b11,     // raw leaf array
+        (Some(_), _) => 0b10,                      // has children
     };
 
     bit_writer.write_2bits(node_type);
 
     if node_type == 0b01 {
         if let res::LeafData::Uniform(val) = node.get_leaves() {
+            println!("Mat found");
             bit_writer.write_byte(*val);
         } else {
             panic!("Expected Uniform leaf in node_type == 0b01!");
@@ -252,55 +228,92 @@ fn serialize_node_bitstream(
 }
 
 pub fn serialize_nodes(
-    node: &node::ContreeNode,
+    root: &node::ContreeNode,
+    root_hash: u64,
     bit_writer: &mut BitstreamWriter,
     gpu_writer: &mut GpuNodeWriter,
     seen_hashes: &mut HashMap<u64, usize>,
 ) {
-    // --- Hash current node ---
-    let child_hashes = if let Some(children) = node.get_children() {
-        children.iter().map(|c| c.hash_node(&[])).collect::<Vec<_>>()
-    } else {
-        vec![]
-    };
-    let hash = node.hash_node(&child_hashes);
+    let mut queue = VecDeque::new();
+    queue.push_back(QueuedNode::Internal(root, root_hash, None));
+     let node_hashes = root.compute_hashes();
+    while let Some(queued) = queue.pop_front() {
+        match queued {
+           QueuedNode::Internal(node, hash, parent_idx) => {
+                println!("I Parent {:?}", parent_idx);
+                if let Some(&existing_idx) = seen_hashes.get(&hash) {
+                    let node_idx = gpu_writer.nodes.len();
+                    println!("I Copy of {:?}", existing_idx);
+                    // Push a node that just points to the existing child
+                    let dup_node = gpu_writer.make_gpu_node(node);
+                    gpu_writer.nodes.push(dup_node);
+                    queue.push_back(QueuedNode::Dedupe(node_idx,existing_idx));
+                    continue;
+                }
 
-    // Already serialized for GPU?
-    if let Some(&existing_gpu_idx) = seen_hashes.get(&hash) {
-        serialize_node_bitstream(node, bit_writer); // still write to file
-        return;
-    }
+                serialize_node_bitstream(node, bit_writer);
 
-    // Always write to file format
-    serialize_node_bitstream(node, bit_writer);
+                // Push this node first so we have a real index
+                let node_idx = gpu_writer.nodes.len();
+                gpu_writer.nodes.push(gpu_writer.make_gpu_node(node));
 
-    // Prepare children
-    let mut first_child_idx = 0;
-    if let Some(children) = node.get_children() {
-        let _non_empty = children.iter().filter(|c| !c.is_empty()).count();
-        first_child_idx = gpu_writer.nodes.len() as u32;
+                // Link from parent
+                if let Some(pi) = parent_idx {
+                    if gpu_writer.nodes[pi].first_child_idx == u32::MAX {
+                        gpu_writer.nodes[pi].first_child_idx = node_idx as u32;
+                    }
+                }
+                // Queue children
+                if let Some(children) = node.get_children() {
+                    for child in children.iter().filter(|c| !c.is_empty()) {
+                         let key = (child as *const node::ContreeNode) as usize;
+                         let child_hash = node_hashes.get(&key)
+                            .expect("hash must exist for child (precomputed)").to_owned();
+                        queue.push_back(QueuedNode::Internal(child, child_hash, Some(node_idx)));
+                    }
+                } else if node.get_leaves().is_array() {
+                    let leaf_hash = node.hash_leaf();
+                    queue.push_back(QueuedNode::LeafBlock(node.get_leaves(),leaf_hash, node_idx));
+                }
 
-        for child in children.iter().filter(|c| !c.is_empty()) {
-            serialize_nodes(child, bit_writer, gpu_writer, seen_hashes);
+                seen_hashes.insert(hash, node_idx);
+            }
+             QueuedNode::Dedupe(parent_idx,existing_idx) => {
+                println!("D Parent {:?} {:?}", parent_idx ,existing_idx);
+                if gpu_writer.nodes[parent_idx].first_child_idx == u32::MAX {
+                    gpu_writer.nodes[parent_idx].first_child_idx = gpu_writer.nodes[existing_idx].first_child_idx
+                }  
+             }
+             QueuedNode::LeafBlock(leaves,hash,parent_idx) => {
+                println!("L Parent {:?}", parent_idx);
+                   
+               
+                if let Some(&existing_idx) = seen_hashes.get(&hash) {
+                    if gpu_writer.nodes[parent_idx].first_child_idx == u32::MAX {
+                        gpu_writer.nodes[parent_idx].first_child_idx = existing_idx as u32;
+                    }
+                    continue;
+                }
+                let node_idx = gpu_writer.nodes.len();
+                if gpu_writer.nodes[parent_idx].first_child_idx ==  u32::MAX {
+                        gpu_writer.nodes[parent_idx].first_child_idx = node_idx as u32;
+                }
+               
+                    
+                if leaves.is_array() {
+                    for mat in  leaves.get_full().iter().filter_map(|&m| m) {
+                        gpu_writer.nodes.push(res::SvoGpuNode {
+                            material: mat as u32,
+                            ..Default::default()
+                        });
+                        
+                    }
+                }
+                seen_hashes.insert(hash, node_idx);
+            }
         }
-    } else if !node.get_leaves().is_empty() {
-        let leaves = node.get_leaves().get_full();
-        first_child_idx = gpu_writer.nodes.len() as u32;
-        println!("GPU nodes len before pushing children/leaves: {}", gpu_writer.nodes.len());
-        for mat in leaves.iter().filter_map(|&m| m) {
-            gpu_writer.nodes.push(res::SvoGpuNode {
-                material: mat as u32,
-                ..Default::default()
-            });
-        }
     }
-
-    // Get or insert unique GPU node
-    let gpu_idx = gpu_writer.get_or_create_gpu_node(node, hash, first_child_idx);
-    seen_hashes.insert(hash, gpu_idx);
 }
-
-
 pub fn deserialize_node(node: &mut node::ContreeNode, reader: &mut BitstreamReader) {
     if let Some(node_type) = reader.read_2bits() {
         match node_type {
@@ -376,50 +389,38 @@ pub fn deserialize_node(node: &mut node::ContreeNode, reader: &mut BitstreamRead
 }
 
 pub fn serialize_nodes_dag(
-    node: &node::ContreeNode,
+    root: &node::ContreeNode,
+    root_hash: u64,
     bit_writer: &mut BitstreamWriter,
     gpu_writer: &mut GpuNodeWriter,
     dag_cache: &mut HashMap<u64, (Vec<u8>, Vec<res::SvoGpuNode>)>,
     seen_hashes: &mut HashMap<u64, usize>,
 ) {
-    // Compute hash of this node
-    let child_hashes = if let Some(children) = node.get_children() {
-        children.iter().map(|c| c.hash_node(&[])).collect::<Vec<_>>()
-    } else {
-        vec![]
-    };
-    let hash = node.hash_node(&child_hashes);
-
-    // If already serialized, skip and just reuse existing index (optional optimization)
-    if let Some(&(ref cached_bits, _)) = dag_cache.get(&hash) {
+    if let Some((cached_bits, cached_gpu_nodes)) = dag_cache.get(&root_hash) {
         bit_writer.bits.extend(cached_bits);
 
-        // Don't add duplicate GPU nodes; reuse existing offset
-        if let Some(&existing_gpu_offset) = seen_hashes.get(&hash) {
-             seen_hashes.insert(hash, existing_gpu_offset); // Redundant but explicit
+        if let Some(&_gpu_offset) = seen_hashes.get(&root_hash) {
+            // Already seen in GPU writer — reuse existing offset
             return;
         } else {
-            //Fallback to full serialization.
-             serialize_nodes(node, bit_writer, gpu_writer,seen_hashes);
-             return;
+            // First time seeing this hash for GPU output, so insert the cached GPU nodes
+            let offset = gpu_writer.nodes.len();
+            gpu_writer.nodes.extend_from_slice(cached_gpu_nodes);
+            seen_hashes.insert(root_hash, offset);
+            return;
         }
     }
 
-    // --- Serialize this node normally ---
     let bit_start = bit_writer.bits.len();
     let gpu_start = gpu_writer.nodes.len();
 
-    // Save current position for later reuse
-    serialize_nodes(node, bit_writer, gpu_writer,seen_hashes);
+    // Actual serialization logic
+    serialize_nodes(root, root_hash, bit_writer, gpu_writer, seen_hashes);
 
-    // We store ONLY the bits (always written) and record the GPU start offset (deduped)
-    let bit_end = bit_writer.bits.len();
-    //let gpu_end = gpu_writer.nodes.len();
-
-    let cached_bits = bit_writer.bits[bit_start..bit_end].to_vec();
-    let material_nodes = gpu_writer.nodes.iter().filter(|n| n.child_mask == 0 && (n.material & 0xFF) != res::NOT_A_LEAF_FLAG).count();
-    println!("Material-only GPU nodes: {}", material_nodes);
+    // Cache results
+    let bits = bit_writer.bits[bit_start..].to_vec();
+    let gpu_nodes = gpu_writer.nodes[gpu_start..].to_vec();
     // Do NOT slice GPU output, since we’re reusing offsets instead
-    dag_cache.insert(hash, (cached_bits, vec![])); // GPU nodes not stored
-    seen_hashes.insert(hash, gpu_start); // Points to real data location
+    dag_cache.insert(root_hash, (bits, gpu_nodes)); // GPU nodes not stored
+    seen_hashes.insert(root_hash, gpu_start); // Points to real data location
 }
