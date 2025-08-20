@@ -83,34 +83,32 @@ fn highest_diff_exp(a: vec3<u32>, b: vec3<u32>) -> i32 {
     return first_leading_bit(merged & 0xFFAAAAAAu); // interleaved axis bits mask
 }
 
-fn svo_child_mask(mask: vec2<u32>, child_idx: u32) -> u32 {
+fn svt_child_mask(mask: vec2<u32>, child_idx: u32) -> u32 {
     if (child_idx < 32u) {
         return (mask.x >> child_idx) & 1u;
     }
     return (mask.y >> (child_idx - 32u)) & 1u;
 }
 
-fn svo_prior_bits(mask: vec2<u32>, child_idx: u32) -> u32 {
+fn svt_prior_bits(mask: vec2<u32>, child_idx: u32) -> u32 {
     if (child_idx < 32u) {
         return countOneBits(mask.x & ((1u << child_idx) - 1u));
     }
     return countOneBits(mask.x) + countOneBits(mask.y & ((1u << (child_idx - 32u)) - 1u));
 }
 
-fn svo_is_leaf(material: u32) -> bool {
+fn svt_has_children(mask: vec2<u32>) -> bool {
+    let mask_nonempty = (mask.x | mask.y) != 0u;
+    let mask_not_full = !(mask.x == 0xFFFFFFFFu && mask.y == 0xFFFFFFFFu);
+    return mask_nonempty && mask_not_full;
+}
+
+fn svt_is_leaf(material: u32) -> bool {
     return (material & 0x80000000u) == 0u;
 }
 
-fn svo_material_index(material: u32) -> u32 {
+fn svt_material_index(material: u32) -> u32 {
     return material & 0xFFu;
-}
-
-fn get_camera_rotation_matrix() -> mat3x3<f32> {
-    return mat3x3<f32>(
-        env_data.cam_rotx,
-        env_data.cam_roty,
-        env_data.cam_rotz
-    );
 }
 
 fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
@@ -140,7 +138,7 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
             break;
         }
 
-        // Descend the SVO for the current local position
+        // Descend the svt for the current local position
         var node_idx: u32 = 0u;
         var node = load_gpu_node(node_idx);
         var cur_scale: i32 = scale_exp;
@@ -153,36 +151,54 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
             let cell_idx: u32 = get_node_cell_index(local, cur_scale);
 
             // does this child exist?
-            if (svo_child_mask(node.mask, cell_idx) == 0u) {
+            if (svt_child_mask(node.mask, cell_idx) == 0u) {
                 // missing child => empty at this subtree
                 hit_leaf = false;
                 break;
             }
 
             // compute child index (compacted)
-            let prior = svo_prior_bits(node.mask, cell_idx);
+            let prior = svt_prior_bits(node.mask, cell_idx);
             let child_node_idx: u32 = node.first_child_idx + prior;
             let child_node = load_gpu_node(child_node_idx);
-
-            // if child encodes a leaf material -> hit
-            if (svo_is_leaf(child_node.material)) {
-                hit_leaf = true;
-                hit_material = svo_material_index(child_node.material);
-                // compute voxel-aligned min for the leaf at this resolution (voxel size = 1)
-                hit_voxel_min = bmin + floor(local); // world-space voxel min
-                break;
-            }
 
             // descend into child node
             node_idx = child_node_idx;
             node = child_node;
             cur_scale = cur_scale - 2;
 
+
+            // if child encodes a leaf material -> hit
+            if (svt_is_leaf(child_node.material)) {
+                if (!svt_has_children(child_node.mask)) {
+                    // Case 1: true leaf (mask empty/full → single voxel or uniform block)
+                    hit_leaf = true;
+                    hit_material = svt_material_index(child_node.material);
+                    hit_voxel_min = bmin + floor(local);
+                    break;
+                } else {
+                    // Case 2: mixed leaf (mask partially filled → need per-voxel occupancy test)
+                    let mixed_cell_idx = get_node_cell_index(local, cur_scale);
+
+                    if (svt_child_mask(child_node.mask, mixed_cell_idx) == 1u) {
+                        hit_leaf = true;
+                        hit_material = svt_material_index(child_node.material);
+                        hit_voxel_min = bmin + floor(local);
+                        break;
+                    } else {
+                        // empty voxel at this spot
+                        hit_leaf = false;
+                        break;
+                    }
+                }
+            }
+
+
             // if we've reached below voxel resolution, treat as leaf
             if (cur_scale < 0) {
                 hit_leaf = true;
                 // if child_node.material wasn't leaf-encoded, still treat this as filled
-                hit_material = svo_material_index(child_node.material);
+                hit_material = svt_material_index(child_node.material);
                 hit_voxel_min = bmin + floor(local);
                 break;
             }
@@ -211,6 +227,16 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
 
     return Hit(vec3<f32>(0.0), vec3<f32>(0.0), 0u, false);
 }
+
+
+fn get_camera_rotation_matrix() -> mat3x3<f32> {
+    return mat3x3<f32>(
+        env_data.cam_rotx,
+        env_data.cam_roty,
+        env_data.cam_rotz
+    );
+}
+
 
 fn intersect_aabb(origin: vec3<f32>, dir: vec3<f32>, min: vec3<f32>, max: vec3<f32>) -> vec2<f32> {
     let inv_dir = 1.0 / dir;

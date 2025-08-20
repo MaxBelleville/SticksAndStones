@@ -25,7 +25,7 @@ impl Default for Contree {
     fn default() -> Self {
         Contree {
             root:  node::ContreeNode::default(),
-            max_size: 1024, //This is basically 1024x1024x1024 or 1,073,741,824 (1 billion) possible voxels. 
+            max_size: 4096, //This is basically 4096x4096x4096 or 68 billion possible voxels. 
             chunks: HashMap::new(),
             offset: IVec3::ZERO,
         }
@@ -138,7 +138,7 @@ impl Contree {
         for (world_pos, mat, lod_depth) in voxel_data {
             let offset = IVec3::splat(new_size / 2 - old_size as i32 / 2);
             let new_pos = world_pos + offset;
-            println!("Remap: old={:?} → new={:?}, lod_depth -> {:?}", world_pos, new_pos, lod_depth);
+           // println!("Remap: old={:?} → new={:?}, lod_depth -> {:?}", world_pos, new_pos, lod_depth);
             new_root.insert_local(new_pos, Some(mat), lod_depth);
         }
 
@@ -176,8 +176,8 @@ impl Contree {
         self.root.update_cache();
     }
 
-    pub fn fill(&mut self, point: IVec3, depth: u8) {
-        self.insert(point, None, Some(depth));
+    pub fn fill(&mut self, point: IVec3, material_id: Option<u8>, depth: u8) {
+        self.insert(point, material_id, Some(depth));
     }
 
     pub fn remove(&mut self, point: IVec3) {
@@ -253,6 +253,7 @@ impl Contree {
     /// Compresses the tree for File upload: trims, collapses, and serializes.
     pub fn compress_data(&mut self) -> (Vec<u8>, Vec<i32>) {
         self.optomize();
+         println!("Serialized start");
         let mut global_cache = HashMap::new();
         let (bitstream, gpu_data) = self.root.serialize_with_cache(&mut global_cache);
 

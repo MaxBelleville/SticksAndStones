@@ -1,27 +1,26 @@
-
-
 use std::hash::{Hash, Hasher};
 
 use super::shared;
 
 pub const NOT_A_LEAF_FLAG: u32 = 1 << 31;
 pub const MATERIAL_MASK: u32 = 0xFF; // Lower 8 bits
-#[derive(Clone, Copy, Default,Debug)]
-pub struct SvoGpuNode {
-    pub child_mask: u64,        // 64 bits = one per child(or leaf in array) (4x4x4)
-    pub first_child_idx: u32,   // index of the first child(or leaf in array) (flat array)
-    pub material: u32,          // material ID or surface info max value 255 = leaf element value to be used later ex grass
-}//Given that material from contree_node is u8, we can have reserved bits
+#[derive(Clone, Copy, Default, Debug)]
+pub struct SvtGpuNode {
+    pub child_mask: u64,      // 64 bits = one per child(or leaf in array) (4x4x4)
+    pub first_child_idx: u32, // index of the first child(or leaf in array) (flat array)
+    pub material: u32, // material ID or surface info max value 255 = leaf element value to be used later ex grass
+} //Given that material from contree_node is u8, we can have reserved bits
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LeafData {
     Empty,
-    Uniform(u8),                      // All 8 voxels are the same material
+    Uniform(u8),                // All 64 voxels are the same material
     Arr(Box<[Option<u8>; 64]>), // Per-voxel material
+    //TODO: Potentially add MixedArray which holds array of different material types other then 0
 }
 
-
-impl Hash for LeafData { // Used in hasher
+impl Hash for LeafData {
+    // Used in hasher
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             LeafData::Empty => {
@@ -35,7 +34,9 @@ impl Hash for LeafData { // Used in hasher
                 // compute mask then compacted materials
                 let mut mask: u64 = 0;
                 for (i, v) in arr.iter().enumerate() {
-                    if v.is_some() { mask |= 1 << i; }
+                    if v.is_some() {
+                        mask |= 1 << i;
+                    }
                 }
                 // include the mask (so sparse layout is unambiguous)
                 mask.hash(state);
@@ -54,7 +55,7 @@ impl Hash for LeafData { // Used in hasher
 }
 
 impl LeafData {
-     /// Check if this is Uniform
+    /// Check if this is Uniform
     pub fn is_array(&self) -> bool {
         matches!(self, LeafData::Arr(_))
     }
@@ -77,7 +78,6 @@ impl LeafData {
         }
     }
 
-
     pub fn get_full(&self) -> Box<[Option<u8>; 64]> {
         match self {
             LeafData::Empty => Box::new([None; 64]),
@@ -94,18 +94,26 @@ impl LeafData {
 
             LeafData::Arr(array) => {
                 let mut mask = 0u64;
+                let mut uniform_mat: Option<u32> = None;
                 for (i, val) in array.iter().enumerate() {
-                    if let Some(_m) = val {
+                    if let Some(m) = val {
                         mask |= 1 << i;
+                        match uniform_mat {
+                            None => uniform_mat = Some(*m as u32),
+                            Some(prev) if prev != *m as u32 => {
+                                uniform_mat = Some(NOT_A_LEAF_FLAG); // mixed
+                            }
+                            _ => {}
+                        }
                     }
                 }
-                (mask, NOT_A_LEAF_FLAG)
+                (mask, uniform_mat.unwrap_or(0))
             }
         }
     }
 
     /// Set a voxel value at index.
-     pub fn set(&mut self, value: Option<u8>, index: Option<usize>) {
+    pub fn set(&mut self, value: Option<u8>, index: Option<usize>) {
         match (value, index) {
             // Case 1: Clear all
             (None, None) => {
@@ -118,16 +126,14 @@ impl LeafData {
             }
 
             // Case 3: Remove single voxel
-            (None, Some(i)) => {
-                match self {
-                    LeafData::Arr(array) if i < 64 => {
-                        array[i] = None;
-                    }
-                    _ => {
-                        *self = LeafData::Arr(Box::new([None; 64]));
-                    }
+            (None, Some(i)) => match self {
+                LeafData::Arr(array) if i < 64 => {
+                    array[i] = None;
                 }
-            }
+                _ => {
+                    *self = LeafData::Arr(Box::new([None; 64]));
+                }
+            },
 
             // Case 4: Set voxel at index
             (Some(val), Some(i)) if i < 64 => {
@@ -200,5 +206,4 @@ impl LeafData {
             }
         }
     }
-
 }

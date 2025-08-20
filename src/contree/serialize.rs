@@ -1,6 +1,10 @@
-use std::{collections::{HashMap, VecDeque}, u32};
+use std::{
+    collections::{HashMap, VecDeque},
+    u32,
+};
 
 use super::{node, res};
+use bevy::ecs::query::Has;
 use twox_hash::XxHash64;
 pub struct BitstreamWriter {
     pub bits: Vec<u8>,
@@ -148,24 +152,21 @@ impl<'a> BitstreamReader<'a> {
 }
 
 pub struct GpuNodeWriter {
-    pub nodes: Vec<res::SvoGpuNode>
+    pub nodes: Vec<res::SvtGpuNode>,
 }
 #[derive(Debug, Clone)]
-enum QueuedNode<'a> {
-    Internal(&'a node::ContreeNode, u64, Option<usize>),
-    Dedupe(usize, usize),
-    LeafBlock(&'a res::LeafData, u64,usize),
+enum NodeKind<'a> {
+    Internal(&'a node::ContreeNode, u64),
+    LeafBlock(&'a res::LeafData, u64),
 }
 
 impl GpuNodeWriter {
     pub fn new() -> Self {
-        GpuNodeWriter {
-            nodes: Vec::new()
-        }
+        GpuNodeWriter { nodes: Vec::new() }
     }
 
-    /// Converts a single `ContreeNode` into a `SvoGpuNode`
-    pub fn make_gpu_node(&self, node: &node::ContreeNode) -> res::SvoGpuNode {
+    /// Converts a single `ContreeNode` into a `SvtGpuNode`
+    pub fn make_gpu_internal(&mut self, node: &node::ContreeNode) {
         let mut child_mask = 0u64;
         let mut material = res::NOT_A_LEAF_FLAG;
 
@@ -175,20 +176,31 @@ impl GpuNodeWriter {
                     child_mask |= 1 << i;
                 }
             }
-        } else {
-            let (mask, mat) = node.get_leaves().get_material_mask();
-            child_mask = mask;
-            material = mat;
+        }
+        else {
+            //Pretty much should only happen if root has no children.
+            (child_mask, material) = node.get_leaves().get_material_mask();
         }
 
-        res::SvoGpuNode {
+        self.nodes.push(res::SvtGpuNode {
             child_mask,
-            first_child_idx: u32::MAX, // Unset first_child_idx
             material,
-        }
+            first_child_idx: u32::MAX, // Shouldn't matter will get overwritten
+        });
     }
 
-    pub fn get_nodes(&self) -> &[res::SvoGpuNode] {
+    pub fn make_gpu_leaf(&mut self, leaves: &res::LeafData) -> bool {
+        let (child_mask, material) = leaves.get_material_mask();
+
+        self.nodes.push(res::SvtGpuNode {
+            child_mask,
+            material,
+            first_child_idx: 0, //Set End of the tree incase error but this shouldn't matter as it's leaf
+        });
+        material == res::NOT_A_LEAF_FLAG
+    }
+
+    pub fn get_nodes(&self) -> &[res::SvtGpuNode] {
         &self.nodes
     }
 }
@@ -205,7 +217,6 @@ fn serialize_node_bitstream(node: &node::ContreeNode, bit_writer: &mut Bitstream
 
     if node_type == 0b01 {
         if let res::LeafData::Uniform(val) = node.get_leaves() {
-            println!("Mat found");
             bit_writer.write_byte(*val);
         } else {
             panic!("Expected Uniform leaf in node_type == 0b01!");
@@ -234,84 +245,101 @@ pub fn serialize_nodes(
     gpu_writer: &mut GpuNodeWriter,
     seen_hashes: &mut HashMap<u64, usize>,
 ) {
-    let mut queue = VecDeque::new();
-    queue.push_back(QueuedNode::Internal(root, root_hash, None));
-     let node_hashes = root.compute_hashes();
-    while let Some(queued) = queue.pop_front() {
-        match queued {
-           QueuedNode::Internal(node, hash, parent_idx) => {
-                println!("I Parent {:?}", parent_idx);
-                if let Some(&existing_idx) = seen_hashes.get(&hash) {
-                    let node_idx = gpu_writer.nodes.len();
-                    println!("I Copy of {:?}", existing_idx);
-                    // Push a node that just points to the existing child
-                    let dup_node = gpu_writer.make_gpu_node(node);
-                    gpu_writer.nodes.push(dup_node);
-                    queue.push_back(QueuedNode::Dedupe(node_idx,existing_idx));
-                    continue;
-                }
+    let node_hashes = root.compute_hashes();
+    let mut internal_queue = VecDeque::new();
+    let mut mixed_leaf = Vec::new();
+    let mut clone_addr: HashMap<usize, Vec<usize>> = HashMap::new();
 
-                serialize_node_bitstream(node, bit_writer);
+    serialize_node_bitstream(root, bit_writer);
+    let idx = gpu_writer.nodes.len();
+    gpu_writer.make_gpu_internal(root);
+    internal_queue.push_back((root, root_hash, idx));
+    seen_hashes.insert(root_hash, idx);
 
-                // Push this node first so we have a real index
-                let node_idx = gpu_writer.nodes.len();
-                gpu_writer.nodes.push(gpu_writer.make_gpu_node(node));
+    while let Some((node, hash, parent_idx)) = internal_queue.pop_front() {
+        let Some(children) = node.get_children() else {
+            continue;
+        };
+        let mut items: Vec<NodeKind> = Vec::new();
 
-                // Link from parent
-                if let Some(pi) = parent_idx {
-                    if gpu_writer.nodes[pi].first_child_idx == u32::MAX {
-                        gpu_writer.nodes[pi].first_child_idx = node_idx as u32;
-                    }
-                }
-                // Queue children
-                if let Some(children) = node.get_children() {
-                    for child in children.iter().filter(|c| !c.is_empty()) {
-                         let key = (child as *const node::ContreeNode) as usize;
-                         let child_hash = node_hashes.get(&key)
-                            .expect("hash must exist for child (precomputed)").to_owned();
-                        queue.push_back(QueuedNode::Internal(child, child_hash, Some(node_idx)));
-                    }
-                } else if node.get_leaves().is_array() {
-                    let leaf_hash = node.hash_leaf();
-                    queue.push_back(QueuedNode::LeafBlock(node.get_leaves(),leaf_hash, node_idx));
-                }
+        let mut child_mask: u64 = 0;
 
-                seen_hashes.insert(hash, node_idx);
-            }
-             QueuedNode::Dedupe(parent_idx,existing_idx) => {
-                println!("D Parent {:?} {:?}", parent_idx ,existing_idx);
-                if gpu_writer.nodes[parent_idx].first_child_idx == u32::MAX {
-                    gpu_writer.nodes[parent_idx].first_child_idx = gpu_writer.nodes[existing_idx].first_child_idx
-                }  
-             }
-             QueuedNode::LeafBlock(leaves,hash,parent_idx) => {
-                println!("L Parent {:?}", parent_idx);
-                   
-               
-                if let Some(&existing_idx) = seen_hashes.get(&hash) {
-                    if gpu_writer.nodes[parent_idx].first_child_idx == u32::MAX {
-                        gpu_writer.nodes[parent_idx].first_child_idx = existing_idx as u32;
-                    }
-                    continue;
-                }
-                let node_idx = gpu_writer.nodes.len();
-                if gpu_writer.nodes[parent_idx].first_child_idx ==  u32::MAX {
-                        gpu_writer.nodes[parent_idx].first_child_idx = node_idx as u32;
-                }
-               
-                    
-                if leaves.is_array() {
-                    for mat in  leaves.get_full().iter().filter_map(|&m| m) {
-                        gpu_writer.nodes.push(res::SvoGpuNode {
-                            material: mat as u32,
-                            ..Default::default()
-                        });
-                        
-                    }
-                }
-                seen_hashes.insert(hash, node_idx);
+        //Collect all the children and
+        for (i, child) in children.iter().enumerate() {
+            if child.is_empty() {
+                continue;
+            } // Probably impossible
+            child_mask |= 1u64 << i;
+            if let Some(_grandcs) = child.get_children() {
+                let key = (child as *const node::ContreeNode) as usize;
+                let ch_hash = *node_hashes.get(&key).expect("hash");
+                items.push(NodeKind::Internal(child, ch_hash));
+            } else {
+                let leaves = child.get_leaves();
+                let leaf_hash = child.hash_leaf();
+                items.push(NodeKind::LeafBlock(leaves, leaf_hash));
             }
         }
+        gpu_writer.nodes[parent_idx].child_mask = child_mask;
+
+        if items.is_empty() {
+            continue;
+        }
+
+        let start_idx = gpu_writer.nodes.len();
+        gpu_writer.nodes[parent_idx].first_child_idx = start_idx as u32;
+       
+        if let Some(pending) = clone_addr.remove(&parent_idx) {
+            for alias in pending {
+                gpu_writer.nodes[alias].first_child_idx = start_idx as u32;
+            }
+           
+        }
+
+        for kind in items {
+            match kind {
+                NodeKind::Internal(node, ch_hash) => {
+                    serialize_node_bitstream(node, bit_writer);
+                    let idx = gpu_writer.nodes.len();
+                    if let Some(&existing_idx) = seen_hashes.get(&ch_hash) {
+                       clone_addr.entry(existing_idx).or_default().push(idx);
+                     
+                       gpu_writer.nodes.push(gpu_writer.nodes[existing_idx]);
+                       continue;
+                    }
+
+                    gpu_writer.make_gpu_internal(node);
+                    internal_queue.push_back((node, ch_hash, idx));
+                    seen_hashes.insert(ch_hash, idx);
+                }
+                NodeKind::LeafBlock(leaves, leaf_hash) => {
+                    let idx = gpu_writer.nodes.len();
+                    if gpu_writer.make_gpu_leaf(leaves) {
+                        //If mixed
+                        mixed_leaf.push((leaves, leaf_hash, idx));
+                    }
+                }
+            }
+        }
+    }
+
+    //Handle case were it's mixed leafs.
+    for (leaves, hash, pidx) in mixed_leaf {
+        if let Some(&existing_idx) = seen_hashes.get(&hash) {
+            gpu_writer.nodes[pidx].first_child_idx = existing_idx as u32;
+            continue;
+        }
+
+        let node_idx = gpu_writer.nodes.len();
+        gpu_writer.nodes[pidx].first_child_idx = node_idx as u32;
+
+        for mat in leaves.get_full().iter().filter_map(|&m| m) {
+            gpu_writer.nodes.push(res::SvtGpuNode {
+                material: mat as u32,
+                ..Default::default()
+            });
+        }
+        seen_hashes.insert(hash, node_idx);
     }
 }
 pub fn deserialize_node(node: &mut node::ContreeNode, reader: &mut BitstreamReader) {
@@ -393,7 +421,7 @@ pub fn serialize_nodes_dag(
     root_hash: u64,
     bit_writer: &mut BitstreamWriter,
     gpu_writer: &mut GpuNodeWriter,
-    dag_cache: &mut HashMap<u64, (Vec<u8>, Vec<res::SvoGpuNode>)>,
+    dag_cache: &mut HashMap<u64, (Vec<u8>, Vec<res::SvtGpuNode>)>,
     seen_hashes: &mut HashMap<u64, usize>,
 ) {
     if let Some((cached_bits, cached_gpu_nodes)) = dag_cache.get(&root_hash) {

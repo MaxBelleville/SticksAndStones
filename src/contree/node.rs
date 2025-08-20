@@ -16,7 +16,7 @@ pub struct ContreeNode {
     tree_scale: usize,  // Each node spans (tree_scale × 4)³ voxel so 4 tree_scale = 16³
     leaves: res::LeafData, // Optional mat index
     serialized_cache: Option<Vec<u8>>,
-    gpu_nodes_cache: Option<Vec<res::SvoGpuNode>>,
+    gpu_nodes_cache: Option<Vec<res::SvtGpuNode>>,
 }
 struct StackItem<'a> {
     node: &'a ContreeNode,
@@ -178,7 +178,7 @@ impl ContreeNode {
     }
 
     //----------------------------------- SERAILIZE ------------------------------------------//
-    pub fn serialize(&self) -> (Vec<u8>, Vec<res::SvoGpuNode>) {
+    pub fn serialize(&self) -> (Vec<u8>, Vec<res::SvtGpuNode>) {
         let mut bit_writer = serialize::BitstreamWriter::new();
         let mut gpu_writer = serialize::GpuNodeWriter::new();
         let mut seen_hashes = HashMap::new();
@@ -203,8 +203,8 @@ impl ContreeNode {
 
     pub fn serialize_with_cache(
         &mut self,
-        global_dag_cache: &mut HashMap<u64, (Vec<u8>, Vec<res::SvoGpuNode>)>,
-    ) -> (&[u8], Vec<res::SvoGpuNode>) {
+        global_dag_cache: &mut HashMap<u64, (Vec<u8>, Vec<res::SvtGpuNode>)>,
+    ) -> (&[u8], Vec<res::SvtGpuNode>) {
         if self.update_cache || self.serialized_cache.is_none() || self.gpu_nodes_cache.is_none() {
             let mut bit_writer = serialize::BitstreamWriter::new();
             let mut gpu_writer = serialize::GpuNodeWriter::new();
@@ -273,10 +273,10 @@ impl ContreeNode {
         }
         let child_size = self.tree_scale / 4;
         assert!(child_size >= 1);
-        println!(
-            "Subdividing node of size {} into child size {}",
-            self.tree_scale, child_size
-        );
+        // println!(
+        //     "Subdividing node of size {} into child size {}",
+        //     self.tree_scale, child_size
+        // );
 
         self.children = Some(Box::new(std::array::from_fn(|_| {
             ContreeNode::new(child_size)
@@ -322,8 +322,7 @@ impl ContreeNode {
         self.leaves.hash(&mut hasher);
         hasher.finish()
     }
-
-    pub fn compute_hashes(&self) -> HashMap<usize, u64> {
+ pub fn compute_hashes(&self) -> HashMap<usize, u64> {
         let mut map: HashMap<usize, u64> = HashMap::new();
         let mut stack: Vec<StackItem> = Vec::new();
 
@@ -389,7 +388,7 @@ impl ContreeNode {
 
         map
     }
-
+  
 
     /// Returns the canonical Arc-ed DAG node, inserting into cache if new.
     pub fn dagify(
