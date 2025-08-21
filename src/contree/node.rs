@@ -1,13 +1,12 @@
 use std::{
     collections::HashMap,
-    hash::{Hash, Hasher},
     sync::Arc,
 };
-use twox_hash::XxHash64;
+
 
 use bevy::math::*;
 
-use super::{res, serialize, shared};
+use super::{res, shared};
 
 /**
     ContreeNode is a node in a tetrahexaconta tree (ConTree).
@@ -16,43 +15,21 @@ use super::{res, serialize, shared};
 */
 #[derive(Debug, Clone)]
 pub struct ContreeNode {
-    children: Option<Box<[ContreeNode; 64]>>, //64 children for ConTree
-    tree_scale: usize,  // Each node spans (tree_scale × 4)³ voxel so 4 tree_scale = 16³
-    leaves: res::LeafData, // Optional mat index
+    pool_idx: Option<usize>, //64 children for ConTree
+    tree_scale: usize,       // Each node spans (tree_scale × 4)³ voxel so 4 tree_scale = 16³
+    leaves: res::LeafData,   // Optional mat index
 }
-struct StackItem<'a> {
-    node: &'a ContreeNode,
-    next_child: usize,            // next child index to process (0..64)
-    child_hashes: [u64; 64],      // filled as children finish
-    parent_slot: Option<usize>,   // index in parent's child array (None for root)
-}
-
-//----------------------------------------- INIT ------------------------------------------------//
-impl Default for ContreeNode {
-    fn default() -> Self {
-        ContreeNode {
-            children: None,
-            tree_scale: 1, // Default size of the root node
-            leaves: res::LeafData::Empty,
-        }
-    }
-}
-
 impl ContreeNode {
     pub fn new(tree_scale: usize) -> Self {
         ContreeNode {
-            children: None,
+            pool_idx: None,
             tree_scale,
             leaves: res::LeafData::Empty,
         }
     }
-    //---------------------------- GETTERS/ SETTERS / HELPERS ---------------------------------//
-    pub fn is_children_empty(&self) -> bool {
-        self.children.is_none()
-    }
 
     pub fn is_empty(&self) -> bool {
-        self.leaves.is_empty() && self.children.is_none()
+        self.leaves.is_empty() && self.pool_idx.is_none()
     }
 
     pub fn has_material(&self) -> bool {
@@ -74,51 +51,80 @@ impl ContreeNode {
         self.tree_scale * 4
     }
 
-    pub fn set_size(&mut self, size:usize) {
-        self.tree_scale = size/4;
+}
+
+/**
+    ContreeNodePool memory manager for an entire series of ContreeNodes
+    This also proccesses all the functions nodes need as it reduces the overhead typically required
+    With allocating memory children memory of reach node.
+*/
+
+#[derive(Debug, Clone)]
+pub struct ContreeNodePool {
+    storage: Vec<ContreeNode>,
+    pool_size: usize,
+}
+
+impl Default for ContreeNodePool {
+    fn default() -> Self {
+        ContreeNodePool {
+            storage: Vec::new(),
+            pool_size: 64,
+        }
+    }
+}
+
+//----------------------------------------- INIT ------------------------------------------------//
+impl ContreeNodePool {
+    pub fn new(size: usize) -> Self {
+        ContreeNodePool {
+            storage: Vec::new(),
+            pool_size: size,
+        }
+    }
+    //---------------------------- GETTERS/ SETTERS / HELPERS ---------------------------------//
+
+    pub fn get_children_mut(&mut self, idx: usize) -> &mut [ContreeNode] {
+        &mut self.storage[idx..idx + self.pool_size]
     }
 
-    pub fn get_children(&self) -> Option<&Box<[ContreeNode; 64]>> {
-        self.children.as_ref()
+    pub fn get_children(&self, idx: usize) -> &[ContreeNode] {
+        &self.storage[idx..idx + self.pool_size]
     }
 
-    pub fn get_children_mut(&mut self) -> Option<&mut Box<[ContreeNode; 64]>> {
-        self.children.as_mut()
+    pub fn get_child(&self, pool_idx: usize, child_idx: usize) -> &ContreeNode {
+        &self.storage[pool_idx + child_idx]
     }
 
-    pub fn set_material(&mut self, value: Option<u8>, index: Option<usize>) {
-        self.leaves.set(value, index);
+    pub fn get_child_mut(&mut self, pool_idx: usize, child_idx: usize) -> &mut ContreeNode {
+        &mut self.storage[pool_idx + child_idx]
     }
 
-    pub fn set_leaves(&mut self, leaves: res::LeafData) {
-        self.leaves = leaves;
+    pub fn child_ptr(&mut self, pool_idx: usize, child_idx: usize) -> *mut ContreeNode {
+        // No borrow of &mut [..] survives this function
+        &mut self.storage[pool_idx + child_idx] as *mut ContreeNode
+    }
+    pub fn storage_ptr(&self) -> *const ContreeNode {
+        self.storage.as_ptr()
     }
 
-    pub fn set_children(&mut self, children: Option<Box<[ContreeNode; 64]>>) {
-        self.children = children;
-    }
-
-    pub fn get_material_local(&self, point: IVec3) -> Option<u8> {
-        let mut node = self;
-        let size = node.tree_scale * 4;
-        let levels = (size as f32).log(4.0) as usize;
-
-        for depth in 0..levels {
-            let level_size = size / 4_usize.pow(depth as u32 + 1);
+    pub fn get_material_local(&self, mut pool_idx: usize, point: IVec3) -> Option<u8> {
+        let size = self.storage[pool_idx].tree_scale * 4;
+        let max_levels = (size as f32).log(4.0) as usize;
+        
+        for depth in 0..max_levels {
+            let level_size = self.pool_size / 4_usize.pow(depth as u32 + 1);
             let child_index = shared::maths::ileave3(point / level_size as i32);
 
+            let node = self.get_child(pool_idx, child_index);
+
             // If this is the final level, look in leaves
-            if depth == levels - 1 {
+            if depth == max_levels - 1 {
                 return node.leaves.get(child_index);
             }
 
-            // Otherwise, descend
-            match &node.children {
-                Some(children) => {
-                    node = &children[child_index as usize];
-                }
-                None => return None,
-            }
+            let pool = node.pool_idx.unwrap();
+            pool_idx = pool + child_index;
         }
 
         // Edge case: if size == 1, return root material
@@ -127,15 +133,17 @@ impl ContreeNode {
 
     pub fn collect_leaf_data(
         &self,
-        base_pos: IVec3,           // world offset of this node
+        node_idx: usize,
+        base_pos: IVec3,
         extent: usize,
         out: &mut Vec<(IVec3, u8, u8)>,
     ) {
         if extent == 0 {
             return;
         }
+        let node = &self.storage[node_idx];
 
-        match &self.leaves {
+        match &node.leaves {
             res::LeafData::Uniform(mat) => {
                 out.push((base_pos, *mat, 1));
             }
@@ -150,37 +158,31 @@ impl ContreeNode {
             _ => {}
         }
 
-        // Case 3: Whole subtree is uniform (children collapsed)
-        // if self.get_is_uniform() {
-        //     // Find material value from any uniform child
-        //     if let Some(children) = self.get_children() {
-        //         if let res::LeafData::Uniform(val) = &children[0].leaves {
-        //             let lod_level = (extent as f32).log(4.0) as u8;
-        //             out.push((base_pos, *val, lod_level));
-        //             return; // stop, don't expand children
-        //         }
-        //     }
-        // }
-
-
-        if let Some(children) = self.get_children() {
+        if let Some(pool_idx) = node.pool_idx {
             let child_extent = extent / 4;
-            for (i, child) in children.iter().enumerate() {
-                if !child.is_empty() {
-                    let child_pos = base_pos + shared::maths::deileave3(i) * child_extent as i32;
-                    child.collect_leaf_data(child_pos, child_extent, out);
+            let children = &self.storage[pool_idx..pool_idx + self.pool_size];
+
+            for (child_idx, child) in children.iter().enumerate() {
+                if !(child.leaves.is_empty() && child.pool_idx.is_none()) {
+                    let child_pos =
+                        base_pos + shared::maths::deileave3(child_idx) * child_extent as i32;
+                    self.collect_leaf_data(pool_idx + child_idx, child_pos, child_extent, out);
                 }
             }
         }
     }
 
-    pub fn get_is_uniform(&self) -> bool {
+    pub fn get_is_uniform(&self, node_idx: usize) -> bool {
+        let node = &self.storage[node_idx];
+
         let mut all_uniform = true;
-        if let Some(children) = &self.children {
+        if let Some(pool_idx) = node.pool_idx {
             // First, recursively collapse all children
-            for child in children.iter() {
-                if !child.get_is_uniform() {
-                    all_uniform =false;
+            let children = &self.storage[pool_idx..pool_idx + 64];
+
+            for (child_idx, _child) in children.iter().enumerate() {
+                if !self.get_is_uniform(child_idx + pool_idx) {
+                    all_uniform = false;
                 }
             }
 
@@ -192,227 +194,200 @@ impl ContreeNode {
                 if not_uniform {
                     all_uniform = false;
                 }
-               
             }
         }
         return all_uniform;
     }
 
-    pub fn check_leave_empty(&mut self) {
-        let mut all_empty = true;
-        if let Some(children) = &self.children {
-            // First, recursively collapse all children
-            for child in children.iter() {
-                if !child.get_is_uniform() {
-                    all_empty =false;
-                }
-            }
-
-            let not_uniform = children
-                .iter()
-                .any(|child| child.leaves != res::LeafData::Empty);
-            if not_uniform {
-                all_empty = false;
-            }
-               
-            
-        }
-        if all_empty {
-            self.children =None;
-        }
+    pub fn is_pool_empty(&self) -> bool {
+        self.storage.is_empty()
     }
 
     //-------------------------------- ADD AND REMOVE ----------------------------------------//
 
-    pub fn insert_local(&mut self, point: IVec3, material: Option<u8>, levels_to_go: u8) {
-        let mut node = self;
-        let size = node.tree_scale * 4;
+    pub fn insert_local(
+        &mut self,
+        mut pool_idx: usize,
+        point: IVec3,
+        material: Option<u8>,
+        levels_to_go: u8,
+    ) {
+        let size = self.storage[pool_idx].tree_scale * 4;
         let max_levels = (size as f32).log(4.0) as usize;
-
-        // Compute total levels from root down to leaves
         let stop_depth = max_levels.saturating_sub(levels_to_go as usize);
+
         for depth in 0..=max_levels {
             let level_size = size / 4_usize.pow(depth as u32 + 1);
             let local = point / level_size as i32;
-            
-            let child_index = shared::maths::ileave3(local);
-            if depth == stop_depth {
-                node.leaves.set(material, None);
-                node.children = None;
-                break;
-            }
-            
-            if node.tree_scale < 4 {
-                node.leaves.set(material, Some(child_index as usize));
-                node.children = None;
-                break;
-            }
+            let child_index = shared::maths::ileave3(local) as usize;
+            // borrow only for this block
+            let need_subdivide:bool;
+            {
+                let node = self.get_child_mut(pool_idx, child_index);
+                if depth == stop_depth {
+                    node.leaves.set(material, None);
+                    node.pool_idx = None;
+                    return;
+                }
 
-            if node.children.is_none() {
-                node.subdivide();
+                if node.tree_scale < 4 {
+                  //   println!("{} {:?} {} {}", local, material, pool_idx, child_index);
+                    node.leaves.set(material, Some(child_index));
+                    return;
+                }
+                need_subdivide = node.pool_idx.is_none();
             }
-
-            node = {
-                let children = node.children.as_mut().unwrap();
-                &mut children[child_index as usize]
-            };
+            if need_subdivide {
+                self.subdivide(pool_idx, child_index);
+            }
+            // descend
+            let pool =  self.storage[pool_idx + child_index].pool_idx.unwrap();
+            pool_idx = pool;
         }
     }
 
-    pub fn subdivide(&mut self) {
-        if self.tree_scale < 4 {
-            println!(
-                "Refusing to subdivide: tree_scale={} too small",
-                self.tree_scale
-            );
+    pub fn subdivide(&mut self, pool_idx: usize, child_idx: usize) {
+        if self.storage[pool_idx + child_idx].tree_scale < 4 {
             return;
         }
-        let child_size = self.tree_scale / 4;
-        assert!(child_size >= 1);
-        println!(
-            "Subdividing node of size {} into child size {}",
-            self.tree_scale, child_size
-        );
 
-        self.children = Some(Box::new(std::array::from_fn(|_| {
-            ContreeNode::new(child_size)
-        })));
-   }
+        let child_size = self.storage[pool_idx + child_idx].tree_scale / 4;
+
+        // Store the offset into the pool
+        self.storage[pool_idx + child_idx].pool_idx = Some(self.alloc_children(child_size));
+    }
+
+    /// Allocate 64 children at once, return a mutable slice
+    pub fn alloc_children(&mut self, tree_scale: usize) -> usize {
+        let start = self.storage.len();
+        self.storage.reserve(self.pool_size);
+
+        for _ in 0..self.pool_size {
+            self.storage.push(ContreeNode::new(tree_scale));
+        }
+
+        start
+    }
 
     //------------------------------------- OPTOMIZE -------------------------------------------//
 
-    // Recursively collapses fully filled subtrees into a single node.
-    pub fn collapse_filled(&mut self) {
-        if let Some(children) = &mut self.children {
-            // First, recursively collapse all children
-            for child in children.iter_mut() {
-                child.collapse_filled();
+    pub fn trim_single_64(&mut self, idx: usize) -> IVec3 {
+        let mut offset = IVec3::ZERO;
+        let mut size = self.storage[idx].tree_scale * 4;
+        let old_min = IVec3::splat(-(size as i32) / 2);
+        // While root has exactly one non-empty child, trim
+        loop {
+            let root_size = self.storage[idx].tree_scale * 4;
+
+            // Stop if the node is too small to subdivide (size == 1 or <4)
+            if root_size < 4 {
+                break;
             }
 
+            let Some(pool_idx) = self.storage[idx].pool_idx else {break;};
+            let children = &mut self.storage[pool_idx..pool_idx+self.pool_size];
+            // Find the one non-empty child
+            let mut non_empty = None;
+            for (i, child) in children.iter().enumerate() {
+                if !(child.leaves.is_empty() && child.pool_idx.is_none()) {
+                    if non_empty.is_some() {
+                        // More than one non-empty child, stop trimming
+                        let size = self.storage[idx].tree_scale * 4;
+                        return old_min + offset - IVec3::splat(-(size as i32) / 2);
+                    }
+                    non_empty = Some(i);
+                }
+            }
+
+            let idx = match non_empty {
+                Some(i) => i,
+                None => break, // All children empty
+            };
+
+            // For a 4x4x4 layout: index = (z << 4) | (y << 2) | x
+            let child_width = root_size / 4;
+
+            offset += shared::maths::deileave3(idx) * child_width as i32;
+
+            // Promote the only non-empty child as new root
+            let child = std::mem::replace(&mut children[idx], ContreeNode::new(child_width));
+            self.storage[idx] = child;
+        }
+        size = self.storage[idx].tree_scale * 4;
+        old_min + offset - IVec3::splat(-(size as i32) / 2)
+    }
+
+
+    // Recursively collapses fully filled subtrees into a single node.
+    pub fn collapse_filled(&mut self, node_idx: usize) {
+        if let Some(pool_idx) = self.storage[node_idx].pool_idx {
+            // First, recursively collapse all children
+
+            for child_idx in pool_idx..pool_idx + self.pool_size {
+                self.collapse_filled(pool_idx + child_idx);
+            }
+            let children = &self.storage[pool_idx..pool_idx + self.pool_size];
             // Attempt to find the first child's leaf data
             if let res::LeafData::Uniform(val) = &children[0].leaves {
                 let all_uniform = children
                     .iter()
                     .all(|child| child.leaves == res::LeafData::Uniform(*val));
-
                 if all_uniform {
-                    self.leaves = res::LeafData::Uniform(*val);
-                    self.children = None;
+                    self.storage[node_idx].leaves = res::LeafData::Uniform(*val);
+                    self.storage[node_idx].pool_idx = None;
                 }
             }
+           
         }
+        
     }
 
-    //------------------------------------ DAG & HASH -------------------------------------------//
-    pub fn hash_node(&self, child_hashes: &[u64]) -> u64 {
-        let mut hasher = XxHash64::with_seed(0);
-        self.leaves.hash(&mut hasher);
-        child_hashes.hash(&mut hasher);
-        hasher.finish()
-    }
-
-     pub fn hash_leaf(&self) -> u64 {
-        let mut hasher = XxHash64::with_seed(0);
-        self.leaves.hash(&mut hasher);
-        hasher.finish()
-    }
- pub fn compute_hashes(&self) -> HashMap<usize, u64> {
-        let mut map: HashMap<usize, u64> = HashMap::new();
-        let mut stack: Vec<StackItem> = Vec::new();
-
-        stack.push(StackItem {
-            node: self,
-            next_child: 0,
-            child_hashes: [0u64; 64],
-            parent_slot: None,
-        });
-
-        while let Some(top) = stack.last_mut() {
-            // If node has children, process them in index order
-            if top.next_child < 64 {
-                if let Some(children) = top.node.get_children() {
-                    let idx = top.next_child;
-                    top.next_child += 1;
-
-                    if children[idx].is_empty() {
-                        // empty child → hash 0 (or some sentinel)
-                        top.child_hashes[idx] = 0u64;
-                        continue;
-                    } else {
-                        // push child frame; child's parent_slot is idx
-                        let child_ref: &ContreeNode = &children[idx];
-                        stack.push(StackItem {
-                            node: child_ref,
-                            next_child: 0,
-                            child_hashes: [0u64; 64],
-                            parent_slot: Some(idx),
-                        });
-                        continue;
-                    }
-                } else {
-                    // no children -> mark as "done children" so we fall into hash compute
-                    top.next_child = 64;
-                    continue;
-                }
-            }
-
-            // All children processed for 'top'; compute full-subtree hash for this node
-            let item = stack.pop().unwrap();
-            let mut hasher = XxHash64::with_seed(0); // same seed you use elsewhere
-            // include leaf data (your existing Hash impl for LeafData)
-            item.node.leaves.hash(&mut hasher);
-
-            // include child hashes in fixed order (0..63)
-            item.child_hashes.hash(&mut hasher);
-
-            let hash = hasher.finish();
-
-            // store in map keyed by node address
-            let node_key = (item.node as *const ContreeNode) as usize;
-            map.insert(node_key, hash);
-
-            // attach hash to parent slot if any
-            if let Some(slot) = item.parent_slot {
-                // parent is now the new top (if present)
-                if let Some(parent) = stack.last_mut() {
-                    parent.child_hashes[slot] = hash;
-                }
-            }
-        }
-
-        map
-    }
-  
-
-    /// Returns the canonical Arc-ed DAG node, inserting into cache if new.
+    //----------------------------------------- DAG ------------------------------------------------//
+    
+     /// Returns the canonical Arc-ed DAG node, inserting into cache if new.
     pub fn dagify(
         &self,
-        cache: &mut HashMap<u64, Arc<ContreeNode>>
-    ) -> (Arc<ContreeNode>, u64) {
-        if self.children.is_none() {
-            let hash = self.hash_node(&[]);
+        node_idx: usize,
+        cache: &mut HashMap<u64, Arc<DagNode>>,
+    ) -> (Arc<DagNode>, u64) {
+        let node = &self.storage[node_idx];
+
+        // Case 1: leaf / no children
+        if node.pool_idx.is_none() {
+            let hash = res::hash_node(&node.leaves,&[]);
             if let Some(existing) = cache.get(&hash) {
                 return (Arc::clone(existing), hash);
             }
-            let new_node = Arc::new(self.clone());
+            let new_node = Arc::new(DagNode {
+                leaves: node.leaves.clone(),
+                tree_scale: node.tree_scale,
+                children: None,
+                hash
+            });
             cache.insert(hash, Arc::clone(&new_node));
             return (new_node, hash);
         }
 
-        let children = self.children.as_ref().unwrap();
-        let mut new_children: [Arc<ContreeNode>; 64] = std::array::from_fn(|_| Arc::new(ContreeNode::default()));
+        // Case 2: has children
+        let pool_idx = node.pool_idx.unwrap();
+        let mut new_children: [Arc<DagNode>; 64] =
+            std::array::from_fn(|_| Arc::new(DagNode::default()));
         let mut child_hashes = [0u64; 64];
 
         for i in 0..64 {
-            let (child_arc, child_hash) = children[i].dagify(cache);
+            let (child_arc, child_hash) = self.dagify(pool_idx + i, cache);
             child_hashes[i] = child_hash;
             new_children[i] = child_arc;
         }
+        let hash = res::hash_node(&node.leaves,&child_hashes);
+        
+        let new_node = DagNode {
+            leaves: node.leaves.clone(),
+            tree_scale: node.tree_scale,
+            children: Some(new_children),
+            hash
+        };
 
-        let mut new_node = self.clone();
-        new_node.children = Some(Box::new(std::array::from_fn(|i| (*new_children[i]).clone())));
-
-        let hash = new_node.hash_node(&child_hashes);
         if let Some(existing) = cache.get(&hash) {
             return (Arc::clone(existing), hash);
         }
@@ -422,7 +397,88 @@ impl ContreeNode {
         (canonical, hash)
     }
 
-    //------------------------------------- DEBUGGIN -------------------------------------------//
+
+}
+
+#[derive(Debug, Clone)]
+pub struct DagNode {
+    pub leaves: res::LeafData,
+    pub tree_scale: usize,
+    pub children: Option<[Arc<DagNode>; 64]>,
+    pub hash: u64,  // cached
+}
+//----------------------------------------- INIT ------------------------------------------------//
+impl Default for DagNode {
+    fn default() -> Self {
+        DagNode {
+            children: None,
+            tree_scale: 0, // Default size of the root node
+            leaves: res::LeafData::Empty,
+            hash: 0
+        }
+    }
+}
+
+impl DagNode {
+    pub fn new(hash:u64,tree_scale: usize) -> Self {
+        DagNode {
+            children: None,
+            tree_scale,
+            leaves: res::LeafData::Empty,
+            hash
+        }
+    }
+    //---------------------------- GETTERS/ SETTERS / HELPERS ---------------------------------//
+    pub fn is_children_empty(&self) -> bool {
+        self.children.is_none()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.leaves.is_empty() && self.children.is_none()
+    }
+
+    pub fn get_hash(&self) -> u64 {
+        self.hash
+    }
+
+    pub fn has_material(&self) -> bool {
+        !self.leaves.is_empty()
+    }
+
+    pub fn get_material_at(&self, index: usize) -> Option<u8> {
+        self.leaves.get(index)
+    }
+
+    pub fn get_leaves(&self) -> &res::LeafData {
+        &self.leaves
+    }
+
+    pub fn get_logical_size(&self) -> usize {
+        self.tree_scale
+    }
+    pub fn get_voxel_extent(&self) -> usize {
+        self.tree_scale * 4
+    }
+
+    pub fn set_size(&mut self, size: usize) {
+        self.tree_scale = size / 4;
+    }
+
+    pub fn get_children(&self) -> Option<&[Arc<DagNode>; 64]> {
+        self.children.as_ref()
+    }
+
+    pub fn get_children_mut(&mut self) -> Option<&mut [Arc<DagNode>; 64]> {
+        self.children.as_mut()
+    }
+
+    pub fn set_material(&mut self, value: Option<u8>, index: Option<usize>) {
+        self.leaves.set(value, index);
+    }
+
+    pub fn set_leaves(&mut self, leaves: res::LeafData) {
+        self.leaves = leaves;
+    }
 
     pub fn print_tree(&self, depth: usize, root_size: usize, offset:IVec3, path: &mut Vec<Option<u8>>) {
         let indent = "  ".repeat(depth * 2);
@@ -446,4 +502,5 @@ impl ContreeNode {
             }
         }
     }
+   
 }

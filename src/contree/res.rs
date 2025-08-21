@@ -1,6 +1,7 @@
-use std::hash::{Hash, Hasher};
+use std::{collections::HashMap, hash::{Hash, Hasher}};
 
 use bevy::math::IVec3;
+use twox_hash::XxHash64;
 
 use super::shared;
 
@@ -212,4 +213,18 @@ impl LeafData {
             }
         }
     }
+}
+
+
+ pub fn hash_node(leaves: &LeafData,child_hashes: &[u64]) -> u64 {
+    let mut hasher = XxHash64::with_seed(0);
+    leaves.hash(&mut hasher);
+    child_hashes.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub fn hash_leaf(leaves: &LeafData) -> u64 {
+    let mut hasher = XxHash64::with_seed(0);
+    leaves.hash(&mut hasher);
+    hasher.finish()
 }

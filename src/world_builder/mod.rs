@@ -53,15 +53,15 @@ fn setup(
     let binding = rng.fork_seed();
     let seed: &[u8; 32] = binding.get_seed();
     state.noise_seed = shared::maths::get_noise_seed(seed);
-    for x in 0..10 {
-        for y in 0..10 {
-             for z in 0..10 {
+    for x in 0..4 {
+        for y in 0..4 {
+             for z in 0..4 {
                 state.contree.insert(ivec3(x,y,z), Some(1),None);
              }
         }
     }
     state.contree.unify_chunks();
-    //state.contree.print_root();
+    // state.contree.print_root();
     (state.file_data, state.gpu_data) = state.contree.compress_data();
     println!("root_size: {}", state.contree.get_root_size());
     

@@ -2,44 +2,45 @@
 use bevy::math::*;
 
 use super::node;
-
-
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct ContreeChunk {
-    node: node::ContreeNode
+    pool: node::ContreeNodePool,
+    root: usize, // index of the root node in the pool
 }
+
 impl Default for ContreeChunk {
     fn default() -> Self {
-        ContreeChunk {
-            node:  node::ContreeNode::default(), //Just incase but shouldn't use.
-        }
+        // Default chunk is empty with size=64 (can be parameterized)
+        let mut pool = node::ContreeNodePool::new(64);
+        let root = pool.alloc_children(64 / 4); // root node scale = size/4
+        Self { pool, root }
     }
 }
+
 impl ContreeChunk {
     pub fn new(size: usize) -> Self {
-        ContreeChunk {
-            node:  node::ContreeNode::new(size/4)
-        }
+        let mut pool = node::ContreeNodePool::new(64); // always alloc 64 children per subdivision
+        let root_idx = pool.alloc_children(size / 4); 
+        Self { pool, root: root_idx }
     }
 
     pub fn get_is_uniform(&self) -> bool {
-        self.node.get_is_uniform()
+        self.pool.get_is_uniform(self.root)
     }
-    pub fn get_node(&self) -> &node::ContreeNode {
-        &self.node
-    }
+
     pub fn is_empty(&self) -> bool {
-        self.node.is_empty()
+        self.pool.get_child(self.root, 0).is_empty()
     }
 
     pub fn insert(&mut self, local_point: IVec3, material_id: Option<u8>, chunk_level: u8) {
-        self.node.insert_local(local_point, material_id, chunk_level);
-        if material_id == None {
-            self.node.check_leave_empty();
+        self.pool.insert_local(self.root, local_point, material_id, chunk_level);
+        if material_id.is_none() {
+            // replicate old check_leave_empty()
+            self.pool.collapse_filled(self.root);
         }
     }
 
-    pub fn fill(&mut self, local_point: IVec3, material_id: Option<u8>, chunk_level: u8) { 
+    pub fn fill(&mut self, local_point: IVec3, material_id: Option<u8>, chunk_level: u8) {
         self.insert(local_point, material_id, chunk_level);
     }
 
@@ -47,24 +48,23 @@ impl ContreeChunk {
         self.insert(local_point, None, 0);
     }
 
-    pub fn clear(&mut self, point: IVec3, chunk_level: u8) {   
+    pub fn clear(&mut self, point: IVec3, chunk_level: u8) {
         self.insert(point, None, chunk_level);
     }
 
     pub fn get_material(&self, local_point: IVec3) -> Option<u8> {
-        self.node.get_material_local(local_point)
+        self.pool.get_material_local(self.root, local_point)
     }
-    
+
     pub fn collect_leaf_data(
         &self,
-        chunk_coord: IVec3,        // the chunk's coordinate in chunk-space
-        chunk_size: usize,         // usually 64
+        chunk_coord: IVec3,
+        chunk_size: usize,
         out: &mut Vec<(IVec3, u8, u8)>,
     ) {
         let base_pos = chunk_coord * chunk_size as i32;
-        let extent = self.node.get_voxel_extent(); // should be == chunk_size
-        // Delegate to the node version, but offset positions into world-space
-        self.node.collect_leaf_data(base_pos, extent, out);
+        let extent = self.pool.get_child(self.root, 0).get_voxel_extent();
+        println!("{} {}",extent,base_pos);
+        self.pool.collect_leaf_data(self.root, base_pos, extent, out);
     }
-
 }

@@ -16,7 +16,7 @@ use super::shared;
 */
 #[derive(Debug, Clone)]
 pub struct Contree {
-    root: Arc<node::ContreeNode>,
+    root: Arc<node::DagNode>,
     root_hash: u64,
     max_size: usize, //multiple of 4
     chunks: HashMap<IVec3, chunk::ContreeChunk>,
@@ -31,7 +31,7 @@ pub struct Contree {
 impl Default for Contree {
     fn default() -> Self {
         Contree {
-            root: Arc::new(node::ContreeNode::default()),
+            root: Arc::new(node::DagNode::default()),
             max_size: 4096, //This is basically 4096x4096x4096 or 68 billion possible voxels.
             chunks: HashMap::new(),
             chunk_size: 64,
@@ -48,7 +48,7 @@ impl Default for Contree {
 impl Contree {
     pub fn new(max_size: usize) -> Self {
         Contree {
-           root: Arc::new(node::ContreeNode::default()),
+           root: Arc::new(node::DagNode::default()),
             max_size,
             chunks: HashMap::new(),
             chunk_size: 64,
@@ -177,40 +177,44 @@ impl Contree {
     //----------------------------------- BUILD CHUNK ------------------------------------------//
 
     pub fn unify_chunks(&mut self) {
-        let mut new_root = node::ContreeNode::new(self.max_size / 4);
-        new_root.subdivide();
+        // Build a brand-new pool for the unified tree
+        let mut pool = node::ContreeNodePool::new(64);
 
+        // Allocate the root node
+        let root_idx = pool.alloc_children(self.max_size / 4);
+         
+        // Subdivide once to create the first layer
+        pool.subdivide(root_idx, 0); // or: alloc_children inside subdivide if needed
+
+        // Insert chunk data
         for (chunk_coord, chunk) in &self.chunks {
-            // Convert chunk coord back to world-space offset
-    
-            // Each chunk internally knows how to iterate over its voxels
             let mut voxel_data = Vec::new();
-            chunk.collect_leaf_data(
-                *chunk_coord,
-                self.chunk_size,
-                &mut voxel_data,
-            );
 
-            // Insert chunk voxels into the unified tree
+            chunk.collect_leaf_data(*chunk_coord, self.chunk_size, &mut voxel_data);
+
             for (world_pos, mat, lod_depth) in voxel_data {
-               
+                 println!("{} {} {}",world_pos, mat, lod_depth);
+        
                 let normalized = world_pos + IVec3::splat(self.max_size as i32 / 2);
-                new_root.insert_local(normalized, Some(mat), lod_depth);
+                pool.insert_local(root_idx, normalized, Some(mat), lod_depth);
             }
         }
 
-       // 1. Trim single-octant layers
-       self.offset = self.trim_single_64(&mut new_root);
+        // 1. Trim single-octant layers
+        self.offset = pool.trim_single_64(root_idx);
 
         // 2. Collapse fully filled subtrees
-        new_root.collapse_filled();
+        pool.collapse_filled(root_idx);
 
-        // DAGify the unified root
+        // 3. DAGify
         let mut dag_cache = HashMap::new();
-        (self.root,self.root_hash)=new_root.dagify(&mut dag_cache);
+        let (dag_root, dag_hash) = pool.dagify(root_idx, &mut dag_cache);
+
+        self.root = dag_root;
+        self.root_hash = dag_hash;
+       
         self.update_cache = true;
     }
-
     //------------------------------------ SERIALIZE -------------------------------------------//
 
     pub fn serialize_with_cache(
@@ -240,55 +244,6 @@ impl Contree {
             self.gpu_nodes_cache.as_ref().unwrap().clone(),
         )
     }
-
-    //------------------------------------- OPTOMIZE -------------------------------------------//
-
-    pub fn trim_single_64(&mut self, root: &mut node::ContreeNode) -> IVec3 {
-        let mut offset = IVec3::ZERO;
-        let old_min = IVec3::splat(-(root.get_voxel_extent() as i32) / 2);
-        // While root has exactly one non-empty child, trim
-        loop {
-            let root_size = root.get_voxel_extent();
-
-            // Stop if the node is too small to subdivide (size == 1 or <4)
-            if root_size < 4 {
-                break;
-            }
-
-            let children = match root.get_children_mut() {
-                Some(children) => children,
-                None => break,
-            };
-
-            // Find the one non-empty child
-            let mut non_empty = None;
-            for (i, child) in children.iter().enumerate() {
-                if !child.is_empty() {
-                    if non_empty.is_some() {
-                        // More than one non-empty child, stop trimming
-                        return old_min + offset - IVec3::splat(-(root.get_voxel_extent() as i32) / 2);
-                    }
-                    non_empty = Some(i);
-                }
-            }
-
-            let idx = match non_empty {
-                Some(i) => i,
-                None => break, // All children empty
-            };
-
-            // For a 4x4x4 layout: index = (z << 4) | (y << 2) | x
-            let child_width = root_size / 4;
-
-            offset += shared::maths::deileave3(idx) * child_width as i32;
-
-            // Promote the only non-empty child as new root
-            let child = std::mem::replace(&mut children[idx], node::ContreeNode::new(child_width));
-            *root = child;
-        }
-        old_min + offset - IVec3::splat(-(root.get_voxel_extent() as i32) / 2)
-    }
-
     //----------------------------------- COMPRESS ------------------------------------------//
 
     /// Compresses the tree for File upload: trims, collapses, and serializes.

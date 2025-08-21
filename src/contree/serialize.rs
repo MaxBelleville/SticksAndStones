@@ -156,7 +156,7 @@ pub struct GpuNodeWriter {
 }
 #[derive(Debug, Clone)]
 enum NodeKind<'a> {
-    Internal(&'a node::ContreeNode, u64),
+    Internal(&'a node::DagNode, u64),
     LeafBlock(&'a res::LeafData, u64),
 }
 
@@ -166,7 +166,7 @@ impl GpuNodeWriter {
     }
 
     /// Converts a single `ContreeNode` into a `SvtGpuNode`
-    pub fn make_gpu_internal(&mut self, node: &node::ContreeNode) {
+    pub fn make_gpu_internal(&mut self, node: &node::DagNode) {
         let mut child_mask = 0u64;
         let mut material = res::NOT_A_LEAF_FLAG;
 
@@ -205,7 +205,7 @@ impl GpuNodeWriter {
     }
 }
 
-fn serialize_node_bitstream(node: &node::ContreeNode, bit_writer: &mut BitstreamWriter) {
+fn serialize_node_bitstream(node: &node::DagNode, bit_writer: &mut BitstreamWriter) {
     let node_type = match (node.get_children(), node.get_leaves()) {
         (None, res::LeafData::Empty) => 0b00,      // air
         (None, res::LeafData::Uniform(_)) => 0b01, // solid
@@ -239,13 +239,12 @@ fn serialize_node_bitstream(node: &node::ContreeNode, bit_writer: &mut Bitstream
 }
 
 pub fn serialize_nodes(
-    root: &node::ContreeNode,
+    root: &node::DagNode,
     root_hash: u64,
     bit_writer: &mut BitstreamWriter,
     gpu_writer: &mut GpuNodeWriter,
     seen_hashes: &mut HashMap<u64, usize>,
 ) {
-    let node_hashes = root.compute_hashes();
     let mut internal_queue = VecDeque::new();
     let mut mixed_leaf = Vec::new();
     let mut clone_addr: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -271,12 +270,10 @@ pub fn serialize_nodes(
             } // Probably impossible
             child_mask |= 1u64 << i;
             if let Some(_grandcs) = child.get_children() {
-                let key = (child as *const node::ContreeNode) as usize;
-                let ch_hash = *node_hashes.get(&key).expect("hash");
-                items.push(NodeKind::Internal(child, ch_hash));
+                items.push(NodeKind::Internal(child, child.get_hash()));
             } else {
                 let leaves = child.get_leaves();
-                let leaf_hash = child.hash_leaf();
+                let leaf_hash = res::hash_leaf(&leaves);
                 items.push(NodeKind::LeafBlock(leaves, leaf_hash));
             }
         }
@@ -342,82 +339,82 @@ pub fn serialize_nodes(
         seen_hashes.insert(hash, node_idx);
     }
 }
-pub fn deserialize_node(node: &mut node::ContreeNode, reader: &mut BitstreamReader) {
-    if let Some(node_type) = reader.read_2bits() {
-        match node_type {
-            // 0b00 = Air (Empty)
-            0b00 => {
-                node.set_leaves(res::LeafData::Empty);
-                node.set_children(None);
-            }
+// pub fn deserialize_node(node: &mut node::DagNode, reader: &mut BitstreamReader) {
+//     if let Some(node_type) = reader.read_2bits() {
+//         match node_type {
+//             // 0b00 = Air (Empty)
+//             0b00 => {
+//                 node.set_leaves(res::LeafData::Empty);
+//                 node.set_children(None);
+//             }
 
-            // 0b01 = Solid (Uniform material)
-            0b01 => {
-                if let Some(mat) = reader.read_byte() {
-                    node.set_leaves(res::LeafData::Uniform(mat));
-                    node.set_children(None);
-                } else {
-                    // Fallback: corrupted stream, treat as empty
-                    node.set_leaves(res::LeafData::Empty);
-                    node.set_children(None);
-                }
-            }
+//             // 0b01 = Solid (Uniform material)
+//             0b01 => {
+//                 if let Some(mat) = reader.read_byte() {
+//                     node.set_leaves(res::LeafData::Uniform(mat));
+//                     node.set_children(None);
+//                 } else {
+//                     // Fallback: corrupted stream, treat as empty
+//                     node.set_leaves(res::LeafData::Empty);
+//                     node.set_children(None);
+//                 }
+//             }
 
-            // 0b10 = Inner node (has children)
-            0b10 => {
-                node.subdivide();
-                if let Some(children) = node.get_children_mut() {
-                    for child in children.iter_mut() {
-                        deserialize_node(child, reader);
-                    }
-                }
-                node.set_leaves(res::LeafData::Empty); // No leaf data when inner node
-            }
+//             // 0b10 = Inner node (has children)
+//             0b10 => {
+//                 node.subdivide();
+//                 if let Some(children) = node.get_children_mut() {
+//                     for child in children.iter_mut() {
+//                         deserialize_node(child, reader);
+//                     }
+//                 }
+//                 node.set_leaves(res::LeafData::Empty); // No leaf data when inner node
+//             }
 
-            // 0b11 = Raw leaf array (64 voxels, 2-bit tags + optional byte)
-            0b11 => {
-                let mut leaves = Box::new([None; 64]);
+//             // 0b11 = Raw leaf array (64 voxels, 2-bit tags + optional byte)
+//             0b11 => {
+//                 let mut leaves = Box::new([None; 64]);
 
-                for i in 0..64 {
-                    let leaf_type = reader.read_2bits();
-                    match leaf_type {
-                        Some(0b00) => {
-                            // Air: leave as None
-                        }
-                        Some(0b01) => {
-                            if let Some(mat) = reader.read_byte() {
-                                leaves[i] = Some(mat);
-                            } else {
-                                // Truncated stream: fallback
-                                leaves[i] = None;
-                            }
-                        }
-                        _ => {
-                            // Invalid leaf type (reserved or corrupt)
-                            leaves[i] = None;
-                        }
-                    }
-                }
+//                 for i in 0..64 {
+//                     let leaf_type = reader.read_2bits();
+//                     match leaf_type {
+//                         Some(0b00) => {
+//                             // Air: leave as None
+//                         }
+//                         Some(0b01) => {
+//                             if let Some(mat) = reader.read_byte() {
+//                                 leaves[i] = Some(mat);
+//                             } else {
+//                                 // Truncated stream: fallback
+//                                 leaves[i] = None;
+//                             }
+//                         }
+//                         _ => {
+//                             // Invalid leaf type (reserved or corrupt)
+//                             leaves[i] = None;
+//                         }
+//                     }
+//                 }
 
-                node.set_leaves(res::LeafData::Arr(leaves));
-                node.set_children(None);
-            }
+//                 node.set_leaves(res::LeafData::Arr(leaves));
+//                 node.set_children(None);
+//             }
 
-            _ => {
-                // Invalid type — fallback to air
-                node.set_leaves(res::LeafData::Empty);
-                node.set_children(None);
-            }
-        }
-    } else {
-        // Corrupted stream or EOF
-        node.set_leaves(res::LeafData::Empty);
-        node.set_children(None);
-    }
-}
+//             _ => {
+//                 // Invalid type — fallback to air
+//                 node.set_leaves(res::LeafData::Empty);
+//                 node.set_children(None);
+//             }
+//         }
+//     } else {
+//         // Corrupted stream or EOF
+//         node.set_leaves(res::LeafData::Empty);
+//         node.set_children(None);
+//     }
+// }
 
 pub fn serialize_nodes_dag(
-    root: &node::ContreeNode,
+    root: &node::DagNode,
     root_hash: u64,
     bit_writer: &mut BitstreamWriter,
     gpu_writer: &mut GpuNodeWriter,
