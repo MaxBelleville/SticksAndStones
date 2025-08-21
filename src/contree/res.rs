@@ -1,5 +1,7 @@
 use std::hash::{Hash, Hasher};
 
+use bevy::math::IVec3;
+
 use super::shared;
 
 pub const NOT_A_LEAF_FLAG: u32 = 1 << 31;
@@ -156,9 +158,12 @@ impl LeafData {
                         array[i] = Some(val);
 
                         // Check for uniformity
-                        if let Some(first_val) = array[0] {
-                            if array.iter().all(|&x| x == Some(first_val)) {
+                        if array.iter().all(|&x| x == array[0]) {
+                            if let Some(first_val)= array[0] {
                                 *self = LeafData::Uniform(first_val);
+                            }
+                            else {
+                                *self = LeafData::Empty;
                             }
                         }
                     }
@@ -175,6 +180,7 @@ impl LeafData {
         depth: usize,
         tree_scale: usize,
         root_size: usize,
+        offset: IVec3,
         path: &mut Vec<Option<u8>>,
     ) {
         let indent = "  ".repeat(depth * 2);
@@ -186,7 +192,7 @@ impl LeafData {
                     let pos = shared::maths::pathtrace_to_world_pos(root_size, path);
                     println!(
                         "{}Leaf(size={}, mat={}, depth={}, pos={})",
-                        indent, tree_scale, mat, depth, pos
+                        indent, tree_scale, mat, depth, pos+offset
                     );
                     path.pop();
                 }
@@ -198,7 +204,7 @@ impl LeafData {
                         let pos = shared::maths::pathtrace_to_world_pos(root_size, path);
                         println!(
                             "{}Leaf(size={}, mat={}, depth={}, pos={})",
-                            indent, tree_scale, m, depth, pos
+                            indent, tree_scale, m, depth, pos+offset
                         );
                         path.pop();
                     }

@@ -9,14 +9,16 @@ use bevy::math::*;
 
 use super::{res, serialize, shared};
 
+/**
+    ContreeNode is a node in a tetrahexaconta tree (ConTree).
+    It can either be a leaf node with a material, or a non-leaf node with children.
+    Each node can have up to 64 children, representing subdivisions of the space.
+*/
 #[derive(Debug, Clone)]
 pub struct ContreeNode {
     children: Option<Box<[ContreeNode; 64]>>, //64 children for ConTree
-    update_cache: bool, // Flag to indicate if the node is dirty and needs to be serialized again
     tree_scale: usize,  // Each node spans (tree_scale × 4)³ voxel so 4 tree_scale = 16³
     leaves: res::LeafData, // Optional mat index
-    serialized_cache: Option<Vec<u8>>,
-    gpu_nodes_cache: Option<Vec<res::SvtGpuNode>>,
 }
 struct StackItem<'a> {
     node: &'a ContreeNode,
@@ -30,11 +32,8 @@ impl Default for ContreeNode {
     fn default() -> Self {
         ContreeNode {
             children: None,
-            update_cache: false,
             tree_scale: 1, // Default size of the root node
             leaves: res::LeafData::Empty,
-            serialized_cache: None, // Cache for serialized data
-            gpu_nodes_cache: None,  // Cache for GPU nodes
         }
     }
 }
@@ -43,11 +42,8 @@ impl ContreeNode {
     pub fn new(tree_scale: usize) -> Self {
         ContreeNode {
             children: None,
-            update_cache: false, // Initially not dirty
             tree_scale,
             leaves: res::LeafData::Empty,
-            serialized_cache: None, // Initialize with no cached serialization
-            gpu_nodes_cache: None,  // Initialize with no cached GPU nodes
         }
     }
     //---------------------------- GETTERS/ SETTERS / HELPERS ---------------------------------//
@@ -78,6 +74,10 @@ impl ContreeNode {
         self.tree_scale * 4
     }
 
+    pub fn set_size(&mut self, size:usize) {
+        self.tree_scale = size/4;
+    }
+
     pub fn get_children(&self) -> Option<&Box<[ContreeNode; 64]>> {
         self.children.as_ref()
     }
@@ -88,22 +88,14 @@ impl ContreeNode {
 
     pub fn set_material(&mut self, value: Option<u8>, index: Option<usize>) {
         self.leaves.set(value, index);
-        self.update_cache = true; // Mark as dirty when material is set
     }
 
     pub fn set_leaves(&mut self, leaves: res::LeafData) {
         self.leaves = leaves;
-        self.update_cache = true; // Mark as dirty when material is set
     }
 
     pub fn set_children(&mut self, children: Option<Box<[ContreeNode; 64]>>) {
         self.children = children;
-        self.update_cache = true; // Mark as dirty when material is set
-    }
-
-    pub fn update_cache(&mut self) {
-        // This method can be used to mark the node as dirty
-        self.update_cache = true;
     }
 
     pub fn get_material_local(&self, point: IVec3) -> Option<u8> {
@@ -135,11 +127,9 @@ impl ContreeNode {
 
     pub fn collect_leaf_data(
         &self,
-        pos: IVec3,
+        base_pos: IVec3,           // world offset of this node
         extent: usize,
-        path: &mut Vec<u8>,
         out: &mut Vec<(IVec3, u8, u8)>,
-        chunks: &mut HashMap<Vec<u8>, Box<ContreeNode>>,
     ) {
         if extent == 0 {
             return;
@@ -147,113 +137,119 @@ impl ContreeNode {
 
         match &self.leaves {
             res::LeafData::Uniform(mat) => {
-                out.push((pos, *mat, 0));
+                out.push((base_pos, *mat, 1));
             }
             res::LeafData::Arr(array) => {
                 for (i, m) in array.iter().enumerate() {
                     if let Some(val) = m {
                         let offset = shared::maths::deileave3(i) * (extent as i32 / 4);
-                        out.push((pos + offset, *val, 0)); // or some depth
+                        out.push((base_pos + offset, *val, 0));
                     }
                 }
             }
             _ => {}
         }
 
-        if extent == 64 {
-            chunks.insert(path.clone(), Box::new(self.clone()));
-        }
+        // Case 3: Whole subtree is uniform (children collapsed)
+        // if self.get_is_uniform() {
+        //     // Find material value from any uniform child
+        //     if let Some(children) = self.get_children() {
+        //         if let res::LeafData::Uniform(val) = &children[0].leaves {
+        //             let lod_level = (extent as f32).log(4.0) as u8;
+        //             out.push((base_pos, *val, lod_level));
+        //             return; // stop, don't expand children
+        //         }
+        //     }
+        // }
+
 
         if let Some(children) = self.get_children() {
             let child_extent = extent / 4;
             for (i, child) in children.iter().enumerate() {
                 if !child.is_empty() {
-                    path.push(i as u8);
-                    let child_pos = pos + shared::maths::deileave3(i) * child_extent as i32;
-                    child.collect_leaf_data(child_pos, child_extent, path, out, chunks);
-                    path.pop();
+                    let child_pos = base_pos + shared::maths::deileave3(i) * child_extent as i32;
+                    child.collect_leaf_data(child_pos, child_extent, out);
                 }
             }
         }
     }
 
-    //----------------------------------- SERAILIZE ------------------------------------------//
-    pub fn serialize(&self) -> (Vec<u8>, Vec<res::SvtGpuNode>) {
-        let mut bit_writer = serialize::BitstreamWriter::new();
-        let mut gpu_writer = serialize::GpuNodeWriter::new();
-        let mut seen_hashes = HashMap::new();
-        let child_hashes = if let Some(children) = self.get_children() {
-            children
-                .iter()
-                .map(|c| c.hash_node(&[]))
-                .collect::<Vec<_>>()
-        } else {
-            vec![]
-        };
-        let hash: u64 = self.hash_node(&child_hashes);
+    pub fn get_is_uniform(&self) -> bool {
+        let mut all_uniform = true;
+        if let Some(children) = &self.children {
+            // First, recursively collapse all children
+            for child in children.iter() {
+                if !child.get_is_uniform() {
+                    all_uniform =false;
+                }
+            }
 
-        serialize::serialize_nodes(self, hash, &mut bit_writer, &mut gpu_writer, &mut seen_hashes);
-        (bit_writer.bits, gpu_writer.get_nodes().to_vec())
-    }
-
-    pub fn deserialize(&mut self, packed_bytes: &[u8]) {
-        let mut reader = serialize::BitstreamReader::new(packed_bytes);
-        serialize::deserialize_node(self, &mut reader);
-    }
-
-    pub fn serialize_with_cache(
-        &mut self,
-        global_dag_cache: &mut HashMap<u64, (Vec<u8>, Vec<res::SvtGpuNode>)>,
-    ) -> (&[u8], Vec<res::SvtGpuNode>) {
-        if self.update_cache || self.serialized_cache.is_none() || self.gpu_nodes_cache.is_none() {
-            let mut bit_writer = serialize::BitstreamWriter::new();
-            let mut gpu_writer = serialize::GpuNodeWriter::new();
-            let mut dag_cache = HashMap::new();
-            let (dagified, root_hash) = self.dagify(&mut dag_cache);
-            let mut seen_hashes = HashMap::new();
-
-            
-            serialize::serialize_nodes_dag(
-                &dagified,
-                root_hash,
-                &mut bit_writer,
-                &mut gpu_writer,
-                global_dag_cache,
-                &mut seen_hashes,
-            );
-            self.serialized_cache = Some(bit_writer.bits);
-            self.gpu_nodes_cache = Some(gpu_writer.get_nodes().to_vec());
-            self.update_cache = false;
+            // Attempt to find the first child's leaf data
+            if let res::LeafData::Uniform(val) = &children[0].leaves {
+                let not_uniform = children
+                    .iter()
+                    .any(|child| child.leaves != res::LeafData::Uniform(*val));
+                if not_uniform {
+                    all_uniform = false;
+                }
+               
+            }
         }
-        (
-            self.serialized_cache.as_ref().unwrap(),
-            self.gpu_nodes_cache.as_ref().unwrap().clone(),
-        )
+        return all_uniform;
     }
+
+    pub fn check_leave_empty(&mut self) {
+        let mut all_empty = true;
+        if let Some(children) = &self.children {
+            // First, recursively collapse all children
+            for child in children.iter() {
+                if !child.get_is_uniform() {
+                    all_empty =false;
+                }
+            }
+
+            let not_uniform = children
+                .iter()
+                .any(|child| child.leaves != res::LeafData::Empty);
+            if not_uniform {
+                all_empty = false;
+            }
+               
+            
+        }
+        if all_empty {
+            self.children =None;
+        }
+    }
+
     //-------------------------------- ADD AND REMOVE ----------------------------------------//
 
     pub fn insert_local(&mut self, point: IVec3, material: Option<u8>, levels_to_go: u8) {
         let mut node = self;
         let size = node.tree_scale * 4;
         let max_levels = (size as f32).log(4.0) as usize;
-        
-        
+
         // Compute total levels from root down to leaves
         let stop_depth = max_levels.saturating_sub(levels_to_go as usize);
-        
         for depth in 0..=max_levels {
             let level_size = size / 4_usize.pow(depth as u32 + 1);
             let local = point / level_size as i32;
-            let child_index = shared::maths::ileave3(local);
             
-            if depth == stop_depth || node.tree_scale < 4 {
+            let child_index = shared::maths::ileave3(local);
+            if depth == stop_depth {
+                node.leaves.set(material, None);
+                node.children = None;
+                break;
+            }
+            
+            if node.tree_scale < 4 {
                 node.leaves.set(material, Some(child_index as usize));
-                node.update_cache = true;
+                node.children = None;
                 break;
             }
 
             if node.children.is_none() {
-                node.subdivide(); // <-- safe now
+                node.subdivide();
             }
 
             node = {
@@ -273,16 +269,15 @@ impl ContreeNode {
         }
         let child_size = self.tree_scale / 4;
         assert!(child_size >= 1);
-        // println!(
-        //     "Subdividing node of size {} into child size {}",
-        //     self.tree_scale, child_size
-        // );
+        println!(
+            "Subdividing node of size {} into child size {}",
+            self.tree_scale, child_size
+        );
 
         self.children = Some(Box::new(std::array::from_fn(|_| {
             ContreeNode::new(child_size)
         })));
-        self.update_cache = true;
-    }
+   }
 
     //------------------------------------- OPTOMIZE -------------------------------------------//
 
@@ -303,7 +298,6 @@ impl ContreeNode {
                 if all_uniform {
                     self.leaves = res::LeafData::Uniform(*val);
                     self.children = None;
-                    self.update_cache = true;
                 }
             }
         }
@@ -430,11 +424,11 @@ impl ContreeNode {
 
     //------------------------------------- DEBUGGIN -------------------------------------------//
 
-    pub fn print_tree(&self, depth: usize, root_size: usize, path: &mut Vec<Option<u8>>) {
+    pub fn print_tree(&self, depth: usize, root_size: usize, offset:IVec3, path: &mut Vec<Option<u8>>) {
         let indent = "  ".repeat(depth * 2);
 
         self.leaves
-            .print(depth, self.tree_scale, root_size, path);
+            .print(depth, self.tree_scale, root_size,offset, path);
 
         if let Some(children) = &self.children {
             println!("{}Node(size={}, depth={})", indent, self.tree_scale, depth);
@@ -446,8 +440,8 @@ impl ContreeNode {
 
                 path.push(Some(i as u8));
                 let pos = shared::maths::pathtrace_to_world_pos(root_size, path);
-                println!("{}  Child[{}](depth={}, pos={}):", indent, i, depth, pos);
-                child.print_tree(depth + 1, root_size, path);
+                println!("{}  Child[{}](depth={}, pos={}):", indent, i, depth, pos+offset);
+                child.print_tree(depth + 1, root_size,offset, path);
                 path.pop();
             }
         }
