@@ -177,24 +177,25 @@ impl Contree {
     //----------------------------------- BUILD CHUNK ------------------------------------------//
 
     pub fn unify_chunks(&mut self) {
-        // Build a brand-new pool for the unified tree
-        let mut pool = node::ContreeNodePool::new(64);
+        // Allocate the root node
+        let mut pool = node::ContreeNodePool::new();
 
         // Allocate the root node
-        let root_idx = pool.alloc_children(self.max_size / 4);
-         
+        let root_idx = pool.alloc_node(self.max_size/4);
+        let base = pool.alloc_children(self.max_size/16);
+        pool.get_child_mut(root_idx,0).set_pool_idx(Some(base));
         // Subdivide once to create the first layer
-        pool.subdivide(root_idx, 0); // or: alloc_children inside subdivide if needed
+       
+        // Subdivide once to create the first layer
+        //pool.subdivide(root_idx, 0); // or: alloc_children inside subdivide if needed
 
         // Insert chunk data
         for (chunk_coord, chunk) in &self.chunks {
             let mut voxel_data = Vec::new();
-
             chunk.collect_leaf_data(*chunk_coord, self.chunk_size, &mut voxel_data);
 
             for (world_pos, mat, lod_depth) in voxel_data {
-                 println!("{} {} {}",world_pos, mat, lod_depth);
-        
+              
                 let normalized = world_pos + IVec3::splat(self.max_size as i32 / 2);
                 pool.insert_local(root_idx, normalized, Some(mat), lod_depth);
             }

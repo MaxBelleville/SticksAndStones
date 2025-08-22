@@ -53,9 +53,9 @@ fn setup(
     let binding = rng.fork_seed();
     let seed: &[u8; 32] = binding.get_seed();
     state.noise_seed = shared::maths::get_noise_seed(seed);
-    for x in 0..4 {
-        for y in 0..4 {
-             for z in 0..4 {
+    for x in 0..512 {
+        for y in 0..64 {
+             for z in 0..512 {
                 state.contree.insert(ivec3(x,y,z), Some(1),None);
              }
         }

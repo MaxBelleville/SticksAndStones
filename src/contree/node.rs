@@ -50,6 +50,10 @@ impl ContreeNode {
     pub fn get_voxel_extent(&self) -> usize {
         self.tree_scale * 4
     }
+    
+    pub fn set_pool_idx(&mut self, pool: Option<usize>)  {
+        self.pool_idx = pool;
+    }
 
 }
 
@@ -76,10 +80,10 @@ impl Default for ContreeNodePool {
 
 //----------------------------------------- INIT ------------------------------------------------//
 impl ContreeNodePool {
-    pub fn new(size: usize) -> Self {
+    pub fn new() -> Self {
         ContreeNodePool {
             storage: Vec::new(),
-            pool_size: size,
+            pool_size: 64,
         }
     }
     //---------------------------- GETTERS/ SETTERS / HELPERS ---------------------------------//
@@ -98,14 +102,6 @@ impl ContreeNodePool {
 
     pub fn get_child_mut(&mut self, pool_idx: usize, child_idx: usize) -> &mut ContreeNode {
         &mut self.storage[pool_idx + child_idx]
-    }
-
-    pub fn child_ptr(&mut self, pool_idx: usize, child_idx: usize) -> *mut ContreeNode {
-        // No borrow of &mut [..] survives this function
-        &mut self.storage[pool_idx + child_idx] as *mut ContreeNode
-    }
-    pub fn storage_ptr(&self) -> *const ContreeNode {
-        self.storage.as_ptr()
     }
 
     pub fn get_material_local(&self, mut pool_idx: usize, point: IVec3) -> Option<u8> {
@@ -163,13 +159,14 @@ impl ContreeNodePool {
             let children = &self.storage[pool_idx..pool_idx + self.pool_size];
 
             for (child_idx, child) in children.iter().enumerate() {
-                if !(child.leaves.is_empty() && child.pool_idx.is_none()) {
+                if !child.is_empty() {
                     let child_pos =
                         base_pos + shared::maths::deileave3(child_idx) * child_extent as i32;
                     self.collect_leaf_data(pool_idx + child_idx, child_pos, child_extent, out);
                 }
             }
         }
+
     }
 
     pub fn get_is_uniform(&self, node_idx: usize) -> bool {
@@ -178,7 +175,7 @@ impl ContreeNodePool {
         let mut all_uniform = true;
         if let Some(pool_idx) = node.pool_idx {
             // First, recursively collapse all children
-            let children = &self.storage[pool_idx..pool_idx + 64];
+            let children = &self.storage[pool_idx..pool_idx + self.pool_size];
 
             for (child_idx, _child) in children.iter().enumerate() {
                 if !self.get_is_uniform(child_idx + pool_idx) {
@@ -195,8 +192,42 @@ impl ContreeNodePool {
                     all_uniform = false;
                 }
             }
+            else {
+                all_uniform = false;
+            }
         }
         return all_uniform;
+    }
+
+      pub fn check_leave_empty(&mut self, node_idx: usize) -> bool {
+        let mut all_empty = true;
+        if let Some(pool_idx) = self.storage[node_idx].pool_idx {
+            // First, recursively collapse all children
+
+            for child_idx in pool_idx..pool_idx + self.pool_size {
+                if !self.check_leave_empty(child_idx) {
+                    all_empty=false;
+                }
+            }
+            let children = &self.storage[pool_idx..pool_idx + self.pool_size];
+            // Attempt to find the first child's leaf data
+            if let res::LeafData::Empty = &children[0].leaves {
+               let not_empty = children
+                    .iter()
+                    .any(|child| child.leaves != res::LeafData::Empty);
+                if not_empty {
+                        all_empty = false;
+                }
+            }
+            else {
+                all_empty = false;
+            }
+            if all_empty {
+                self.storage[node_idx].pool_idx = None;
+            }
+        }
+        
+        return all_empty;
     }
 
     pub fn is_pool_empty(&self) -> bool {
@@ -212,6 +243,7 @@ impl ContreeNodePool {
         material: Option<u8>,
         levels_to_go: u8,
     ) {
+    
         let size = self.storage[pool_idx].tree_scale * 4;
         let max_levels = (size as f32).log(4.0) as usize;
         let stop_depth = max_levels.saturating_sub(levels_to_go as usize);
@@ -223,7 +255,7 @@ impl ContreeNodePool {
             // borrow only for this block
             let need_subdivide:bool;
             {
-                let node = self.get_child_mut(pool_idx, child_index);
+                let node = self.get_child_mut(pool_idx, 0);
                 if depth == stop_depth {
                     node.leaves.set(material, None);
                     node.pool_idx = None;
@@ -238,23 +270,23 @@ impl ContreeNodePool {
                 need_subdivide = node.pool_idx.is_none();
             }
             if need_subdivide {
-                self.subdivide(pool_idx, child_index);
+                self.subdivide(pool_idx);
             }
             // descend
-            let pool =  self.storage[pool_idx + child_index].pool_idx.unwrap();
-            pool_idx = pool;
+            let pool =  self.storage[pool_idx].pool_idx.unwrap();
+            pool_idx = pool+child_index;
         }
     }
 
-    pub fn subdivide(&mut self, pool_idx: usize, child_idx: usize) {
-        if self.storage[pool_idx + child_idx].tree_scale < 4 {
+    pub fn subdivide(&mut self, pool_idx: usize) {
+        if self.storage[pool_idx].tree_scale < 4 {
             return;
         }
 
-        let child_size = self.storage[pool_idx + child_idx].tree_scale / 4;
+        let child_size = self.storage[pool_idx].tree_scale / 4;
 
         // Store the offset into the pool
-        self.storage[pool_idx + child_idx].pool_idx = Some(self.alloc_children(child_size));
+        self.storage[pool_idx].pool_idx = Some(self.alloc_children(child_size));
     }
 
     /// Allocate 64 children at once, return a mutable slice
@@ -269,62 +301,94 @@ impl ContreeNodePool {
         start
     }
 
+    pub fn alloc_node(&mut self, tree_scale: usize) -> usize {
+        let start = self.storage.len();
+        self.storage.push(ContreeNode::new(tree_scale));
+
+        start
+    }
+    
     //------------------------------------- OPTOMIZE -------------------------------------------//
 
-    pub fn trim_single_64(&mut self, idx: usize) -> IVec3 {
+
+    pub fn trim_single_64(&mut self, root_idx: usize) -> IVec3 {
+        let mut current_idx = root_idx;
         let mut offset = IVec3::ZERO;
-        let mut size = self.storage[idx].tree_scale * 4;
-        let old_min = IVec3::splat(-(size as i32) / 2);
-        // While root has exactly one non-empty child, trim
+
+        // old_min computed from the original root extent (matches original node-based impl)
+        let initial_extent = self.storage[current_idx].get_voxel_extent();
+        let old_min = IVec3::splat(-(initial_extent as i32) / 2);
+
         loop {
-            let root_size = self.storage[idx].tree_scale * 4;
+            let root_size = self.storage[current_idx].get_voxel_extent();
 
             // Stop if the node is too small to subdivide (size == 1 or <4)
             if root_size < 4 {
                 break;
             }
 
-            let Some(pool_idx) = self.storage[idx].pool_idx else {break;};
-            let children = &mut self.storage[pool_idx..pool_idx+self.pool_size];
-            // Find the one non-empty child
-            let mut non_empty = None;
+            let pool_idx = match self.storage[current_idx].pool_idx {
+                Some(p) => p,
+                None => break, // no children
+            };
+
+            // Sanity: parent should have been allocated before its children
+            debug_assert!(
+                current_idx < pool_idx,
+                "parent index should be before its children"
+            );
+
+            // Split storage into two non-overlapping mutable slices so we can mutably
+            // borrow the parent and the children at the same time.
+            let (head, tail) = self.storage.split_at_mut(pool_idx);
+            let children = &mut tail[0..self.pool_size];
+
+            // Find the single non-empty child (if any)
+            let mut non_empty: Option<usize> = None;
             for (i, child) in children.iter().enumerate() {
-                if !(child.leaves.is_empty() && child.pool_idx.is_none()) {
+                if !child.is_empty() {
                     if non_empty.is_some() {
-                        // More than one non-empty child, stop trimming
-                        let size = self.storage[idx].tree_scale * 4;
+                        // More than one non-empty child -> stop trimming and return offset
+                        let size = self.storage[current_idx].get_voxel_extent();
                         return old_min + offset - IVec3::splat(-(size as i32) / 2);
                     }
                     non_empty = Some(i);
                 }
             }
 
-            let idx = match non_empty {
+            let child_i = match non_empty {
                 Some(i) => i,
-                None => break, // All children empty
+                None => break, // all children empty
             };
 
-            // For a 4x4x4 layout: index = (z << 4) | (y << 2) | x
+            // Child extent / width (same arithmetic as original)
             let child_width = root_size / 4;
 
-            offset += shared::maths::deileave3(idx) * child_width as i32;
+            // Add child's spatial offset (deileave3 gives the child coords)
+            offset += shared::maths::deileave3(child_i) * child_width as i32;
 
-            // Promote the only non-empty child as new root
-            let child = std::mem::replace(&mut children[idx], ContreeNode::new(child_width));
-            self.storage[idx] = child;
+            // Move the child node into the parent slot and replace the child slot with an empty node
+            // (we use mem::replace so we don't violate borrows)
+            let moved_child = std::mem::replace(&mut children[child_i], ContreeNode::new(child_width));
+            // place moved_child into the parent's slot (head[current_idx] is the parent)
+            let _tmp = std::mem::replace(&mut head[current_idx], moved_child);
+
+            // Loop continues with the same current_idx (we physically replaced the parent node
+            // content with the child content, matching the behavior of the original function).
         }
-        size = self.storage[idx].tree_scale * 4;
+
+        // final adjustment (same as original node implementation)
+        let size = self.storage[current_idx].get_voxel_extent();
         old_min + offset - IVec3::splat(-(size as i32) / 2)
     }
 
-
     // Recursively collapses fully filled subtrees into a single node.
     pub fn collapse_filled(&mut self, node_idx: usize) {
-        if let Some(pool_idx) = self.storage[node_idx].pool_idx {
+       if let Some(pool_idx) = self.storage[node_idx].pool_idx {
             // First, recursively collapse all children
 
             for child_idx in pool_idx..pool_idx + self.pool_size {
-                self.collapse_filled(pool_idx + child_idx);
+                self.collapse_filled( child_idx);
             }
             let children = &self.storage[pool_idx..pool_idx + self.pool_size];
             // Attempt to find the first child's leaf data

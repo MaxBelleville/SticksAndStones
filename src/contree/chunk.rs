@@ -11,17 +11,21 @@ pub struct ContreeChunk {
 impl Default for ContreeChunk {
     fn default() -> Self {
         // Default chunk is empty with size=64 (can be parameterized)
-        let mut pool = node::ContreeNodePool::new(64);
-        let root = pool.alloc_children(64 / 4); // root node scale = size/4
+        let mut pool = node::ContreeNodePool::new();
+        let root = pool.alloc_node(64/4);
+        let base = pool.alloc_children(64/16);
+        pool.get_child_mut(root,0).set_pool_idx(Some(base));
         Self { pool, root }
     }
 }
 
 impl ContreeChunk {
     pub fn new(size: usize) -> Self {
-        let mut pool = node::ContreeNodePool::new(64); // always alloc 64 children per subdivision
-        let root_idx = pool.alloc_children(size / 4); 
-        Self { pool, root: root_idx }
+        let mut pool = node::ContreeNodePool::new(); // always alloc 64 children per subdivision
+        let root = pool.alloc_node(size/4);
+        let base = pool.alloc_children(size/16);
+        pool.get_child_mut(root,0).set_pool_idx(Some(base));
+        Self { pool, root }
     }
 
     pub fn get_is_uniform(&self) -> bool {
@@ -35,8 +39,7 @@ impl ContreeChunk {
     pub fn insert(&mut self, local_point: IVec3, material_id: Option<u8>, chunk_level: u8) {
         self.pool.insert_local(self.root, local_point, material_id, chunk_level);
         if material_id.is_none() {
-            // replicate old check_leave_empty()
-            self.pool.collapse_filled(self.root);
+            self.pool.check_leave_empty(self.root);
         }
     }
 
@@ -64,7 +67,6 @@ impl ContreeChunk {
     ) {
         let base_pos = chunk_coord * chunk_size as i32;
         let extent = self.pool.get_child(self.root, 0).get_voxel_extent();
-        println!("{} {}",extent,base_pos);
         self.pool.collect_leaf_data(self.root, base_pos, extent, out);
     }
 }
