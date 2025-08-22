@@ -17,8 +17,8 @@ struct PushConstants {
     mode: f32,
 };
 const NOT_A_LEAF_FLAG: u32 = 2147483648u;
-const MAX_STEPS: u32 = 256u;
-const EPSILON: f32 = 1e-2;
+const MAX_STEPS: u32 = 1024u;
+const EPSILON: f32 = 1e-5;
 const MAX_DIST: f32 = 1000.0;
 
 @group(0) @binding(0) var input: texture_storage_2d<rgba8unorm, read>;
@@ -38,8 +38,17 @@ struct Hit {
     pos: vec3<f32>,
     normal: vec3<f32>,
     material: u32,
-    is_hit: bool
+    is_hit: bool,
+    t: f32        // ray distance (important for ordering / depth buffer)
 };
+
+// Optionally, keep the raw samples that caused the crossing
+struct Crossing {
+    p0: vec3<f32>, // world-space point before crossing
+    p1: vec3<f32>, // world-space point after crossing
+    f0: f32,       // occupancy(p0) value
+    f1: f32,       // occupancy(p1) value
+}
 
 fn load_gpu_node(index: u32) -> GpuNode {
     let base = index * 4u;
@@ -55,10 +64,18 @@ fn load_gpu_node(index: u32) -> GpuNode {
 // Get child index (0..63) for local world-space position `local`
 // `local` is in world units relative to root_min. We floor() it to voxels first.
 fn get_node_cell_index(local: vec3<f32>, scale_exp: i32) -> u32 {
-    // integer voxel coords relative to root_min
-    let iv = vec3<u32>(u32(floor(local.x)), u32(floor(local.y)), u32(floor(local.z)));
-    let shift = u32(scale_exp);
-    let cell = (iv >> vec3<u32>(shift)) & vec3<u32>(3u); // take 2 bits per axis
+    // integer voxel coords relative to root_min (signed!)
+    let iv = vec3<i32>(
+        i32(floor(local.x)),
+        i32(floor(local.y)),
+        i32(floor(local.z))
+    );
+
+    let shift: u32 = u32(scale_exp);
+
+    // convert to unsigned only for shifting/masking
+    let iv_u = vec3<u32>(iv);
+    let cell = (iv_u >> vec3<u32>(shift)) & vec3<u32>(3u);
     return cell.x | (cell.y << 2u) | (cell.z << 4u);
 }
 
@@ -111,123 +128,171 @@ fn svt_material_index(material: u32) -> u32 {
     return material & 0xFFu;
 }
 
+
+// Query whether a voxel at world-space integer coordinates `p` is solid.
+fn lookup_voxel(p: vec3<i32>) -> bool {
+    // world voxel coords relative to root
+    let local = vec3<f32>(p) - push.root_min;
+
+    // quick reject: out of root bounds
+    if (any(local < vec3<f32>(0.0)) || any(local >= vec3<f32>(push.root_size))) {
+        return false;
+    }
+
+    // compute root scale exp (same as raymarch_svt)
+    let root_log = i32(floor(log2(push.root_size)));
+    var cur_scale: i32 = root_log - 2;
+
+    // descend from root
+    var node_idx: u32 = 0u;
+    var node = load_gpu_node(node_idx);
+
+    loop {
+        // which 4×4×4 cell within this node?
+        let cell_idx: u32 = get_node_cell_index(local, cur_scale);
+
+        // does this child exist?
+        if (svt_child_mask(node.mask, cell_idx) == 0u) {
+            return false; // empty
+        }
+
+        // map to child node index
+        let prior = svt_prior_bits(node.mask, cell_idx);
+        let child_idx: u32 = node.first_child_idx + prior;
+        let child_node = load_gpu_node(child_idx);
+
+        node = child_node;
+        cur_scale = cur_scale - 2;
+
+        if (svt_is_leaf(child_node.material)) {
+            if (!svt_has_children(child_node.mask)) {
+                return true; // solid uniform block
+            } else {
+                let mixed_idx = get_node_cell_index(local, cur_scale);
+                return svt_child_mask(child_node.mask, mixed_idx) == 1u;
+            }
+        }
+
+        if (cur_scale < 0) {
+            return true; // below voxel resolution = solid
+        }
+    }
+
+    return false;
+}
+
+fn occupancy(p: vec3<i32>) -> f32 {
+    // 1.0 = solid, -1.0 = air
+    let hit = lookup_voxel(p); // descend SVO for that voxel
+    return select(-1.0, 1.0, hit);
+}
+
+fn gradient(p: vec3<i32>) -> vec3<f32> {
+    return normalize(vec3<f32>(
+        occupancy(p + vec3(1,0,0)) - occupancy(p + vec3(-1,0,0)),
+        occupancy(p + vec3(0,1,0)) - occupancy(p + vec3(0,-1,0)),
+        occupancy(p + vec3(0,0,1)) - occupancy(p + vec3(0,0,-1))
+    ));
+}
+// Corner helper
+fn occ_i(i: vec3<i32>) -> f32 {
+    return select(-1.0, 1.0, lookup_voxel(i)); // reuse your SVO lookup
+}
+
+// Trilinear blend of ±1 occupancy at the 8 cell corners around p
+fn density(p: vec3<f32>) -> f32 {
+    let base = vec3<i32>(floor(p));
+    let f = fract(p);
+
+    let c000 = occ_i(base + vec3<i32>(0,0,0));
+    let c100 = occ_i(base + vec3<i32>(1,0,0));
+    let c010 = occ_i(base + vec3<i32>(0,1,0));
+    let c110 = occ_i(base + vec3<i32>(1,1,0));
+    let c001 = occ_i(base + vec3<i32>(0,0,1));
+    let c101 = occ_i(base + vec3<i32>(1,0,1));
+    let c011 = occ_i(base + vec3<i32>(0,1,1));
+    let c111 = occ_i(base + vec3<i32>(1,1,1));
+
+    let x00 = mix(c000, c100, f.x);
+    let x10 = mix(c010, c110, f.x);
+    let x01 = mix(c001, c101, f.x);
+    let x11 = mix(c011, c111, f.x);
+    let y0  = mix(x00,  x10,  f.y);
+    let y1  = mix(x01,  x11,  f.y);
+    return mix(y0, y1, f.z);
+}
+
+// Smoother normal from density field
+fn density_normal(p: vec3<f32>) -> vec3<f32> {
+    let eps = 0.5773; // 1/sqrt(3)
+    let d1 = density(p + eps*vec3<f32>(1, -1, -1));
+    let d2 = density(p + eps*vec3<f32>(-1, 1, -1));
+    let d3 = density(p + eps*vec3<f32>(-1, -1, 1));
+    let d4 = density(p + eps*vec3<f32>(1, 1, 1));
+    return normalize(vec3<f32>(d1 - d2 - d3 + d4,
+                               -d1 + d2 - d3 + d4,
+                               -d1 - d2 + d3 + d4));
+}
+
 fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
     let bmin = push.root_min;
-    let root_size = push.root_size;
-    let bmax = bmin + vec3<f32>(root_size);
+    let bmax = bmin + vec3<f32>(push.root_size);
 
     let tb = intersect_aabb(ray_o, ray_d, bmin, bmax);
     if (tb.x > tb.y || tb.y < 0.0) {
-        return Hit(vec3<f32>(0.0), vec3<f32>(0.0), 0u, false);
+        return Hit(vec3<f32>(0.0), vec3<f32>(0.0), 0u, false, 0.0);
     }
 
-    // initial t and sample position
+    // start inside bounding box
     var t: f32 = max(tb.x, 0.0) + EPSILON;
     var pos: vec3<f32> = ray_o + ray_d * t;
 
-    // compute scale_exp = log2(root_size) - 2  (top level child size = root_size / 4)
-    let root_log = i32(floor(log2(root_size)));
-    var scale_exp: i32 = root_log - 2;
+    // Track previous sample (init to occupancy)
+    var prev_pos: vec3<f32> = pos;
+    var prev_occ: f32 = select(-1.0, 1.0, lookup_voxel(vec3<i32>(floor(pos))));
+
+    // DDA stepping: track which voxel we are in
+    var voxel = vec3<i32>(floor(pos));
 
     for (var steps: u32 = 0u; steps < MAX_STEPS; steps = steps + 1u) {
-        // position relative to root_min
-        let local = pos - bmin;
+        // Fast occupancy check (cheap)
+        let occ: f32 = select(-1.0, 1.0, lookup_voxel(voxel));
 
-        // out of root?
-        if (any(local < vec3<f32>(0.0)) || any(local >= vec3<f32>(root_size))) {
-            break;
+        // detect sign change (air -> solid)
+        if (occ > 0.0 && prev_occ < 0.0) {
+            // crossing detected → compute density & gradient only here
+            let alpha = prev_occ / (prev_occ - occ);
+            let p_cross = mix(prev_pos, pos, alpha);
+
+            // use fast density gradient
+            let n = density_normal(p_cross);
+
+            return Hit(p_cross, n, 1u, true, t);
         }
 
-        // Descend the svt for the current local position
-        var node_idx: u32 = 0u;
-        var node = load_gpu_node(node_idx);
-        var cur_scale: i32 = scale_exp;
-        var hit_leaf: bool = false;
-        var hit_material: u32 = 0u;
-        var hit_voxel_min: vec3<f32> = vec3<f32>(0.0);
+        // step to next voxel boundary along ray (classic 3D DDA)
+        let voxel_min: vec3<f32> = vec3<f32>(voxel);
+        let voxel_max: vec3<f32> = voxel_min + 1.0;
+        let tin: vec2<f32> = intersect_aabb(ray_o, ray_d, voxel_min, voxel_max);
 
-        loop {
-            // which child (0..63) at this node does `local` lie in?
-            let cell_idx: u32 = get_node_cell_index(local, cur_scale);
-
-            // does this child exist?
-            if (svt_child_mask(node.mask, cell_idx) == 0u) {
-                // missing child => empty at this subtree
-                hit_leaf = false;
-                break;
-            }
-
-            // compute child index (compacted)
-            let prior = svt_prior_bits(node.mask, cell_idx);
-            let child_node_idx: u32 = node.first_child_idx + prior;
-            let child_node = load_gpu_node(child_node_idx);
-
-            // descend into child node
-            node_idx = child_node_idx;
-            node = child_node;
-            cur_scale = cur_scale - 2;
-
-
-            // if child encodes a leaf material -> hit
-            if (svt_is_leaf(child_node.material)) {
-                if (!svt_has_children(child_node.mask)) {
-                    // Case 1: true leaf (mask empty/full → single voxel or uniform block)
-                    hit_leaf = true;
-                    hit_material = svt_material_index(child_node.material);
-                    hit_voxel_min = bmin + floor(local);
-                    break;
-                } else {
-                    // Case 2: mixed leaf (mask partially filled → need per-voxel occupancy test)
-                    let mixed_cell_idx = get_node_cell_index(local, cur_scale);
-
-                    if (svt_child_mask(child_node.mask, mixed_cell_idx) == 1u) {
-                        hit_leaf = true;
-                        hit_material = svt_material_index(child_node.material);
-                        hit_voxel_min = bmin + floor(local);
-                        break;
-                    } else {
-                        // empty voxel at this spot
-                        hit_leaf = false;
-                        break;
-                    }
-                }
-            }
-
-
-            // if we've reached below voxel resolution, treat as leaf
-            if (cur_scale < 0) {
-                hit_leaf = true;
-                // if child_node.material wasn't leaf-encoded, still treat this as filled
-                hit_material = svt_material_index(child_node.material);
-                hit_voxel_min = bmin + floor(local);
-                break;
-            }
-        } // end loop descend
-
-        if (hit_leaf) {
-            let hit_pos = hit_voxel_min + vec3<f32>(0.5); // center of voxel as hit pos
-            let normal = -normalize(ray_d);
-            return Hit(hit_pos, normal, hit_material, true);
-        }
-
-        // No leaf here -> step to the exit of the integer voxel we are currently in
-        let voxel_min_world = bmin + vec3<f32>(floor(local));
-        let voxel_max_world = voxel_min_world + vec3<f32>(1.0);
-
-        let tin = intersect_aabb(ray_o, ray_d, voxel_min_world, voxel_max_world);
         if (tin.x > tin.y) {
-            // numerical weirdness: advance a bit
-            t = t + EPSILON;
+            t = t + 0.05;
         } else {
-            t = tin.y + EPSILON;
+            t = tin.y + 0.05;
         }
+
         if (t >= MAX_DIST) { break; }
+
+        // update positions and previous occupancy
+        prev_pos = pos;
+        prev_occ = occ;
+
         pos = ray_o + ray_d * t;
+        voxel = vec3<i32>(floor(pos));
     }
 
-    return Hit(vec3<f32>(0.0), vec3<f32>(0.0), 0u, false);
+    return Hit(vec3<f32>(0.0), vec3<f32>(0.0), 0u, false, t);
 }
-
 
 fn get_camera_rotation_matrix() -> mat3x3<f32> {
     return mat3x3<f32>(
@@ -265,32 +330,35 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= u32(push.screen_size.x) || id.y >= u32(push.screen_size.y)) {
         return;
     }
-    
-    let uv = ((vec2<f32>(id.xy)) / push.screen_size);
-    //Reduce skew due to percision issue on fullscreen.
+
+    let uv = vec2<f32>(id.xy) / push.screen_size;
     let aspect = push.screen_size.x / push.screen_size.y;
 
-   
-    // Calculate the ray direction
+    // camera ray
     let dir_camera = screen_uv_to_ray_dir(uv, push.fov_y_deg, aspect);
-    let ray_org = env_data.cam_pos + dir_camera*EPSILON;
+    let ray_org = env_data.cam_pos + dir_camera * EPSILON;
+
+    // run voxel/SDF raymarcher
     let hit = raymarch_svt(ray_org, dir_camera);
 
-    var out_val = 0.0;
     var color = vec3<f32>(0.0);
+    var alpha = 0.0;
 
     if (hit.is_hit) {
-        out_val = 1.0;
+        alpha = 1.0;
 
-        let t = env_data.time;
-        let angle = dot(hit.pos.xz, vec2(12.0, 7.0)) + t;
-        let angle2 = dot(hit.pos.xy, vec2(12.0, 7.0)) + t;
-        let angle3 = dot(hit.pos.zy, vec2(12.0, 7.0)) + t;
-        let r = 0.5 + 0.5 * sin(angle);
-        let g = 0.5 + 0.5 * sin(angle2 + 2.0);
-        let b = 0.5 + 0.5 * sin(angle3 + 4.0);
-        color = vec3(r,g,b);
+        // shading only
+        let N = hit.normal; // already normalized by raymarch_svt
+        let L = normalize(env_data.sunx * env_data.cam_rotx +
+                          env_data.suny * env_data.cam_roty +
+                          env_data.sunz * env_data.cam_rotz);
+
+        let base_color = vec3<f32>(0.1, 0.6, 0.2);
+        let lambert = max(dot(N, L), 0.0);
+        let ambient = 0.2;
+
+        color = base_color * (ambient + lambert);
     }
 
-    textureStore(output, vec2<i32>(id.xy), vec4<f32>(color, out_val));
+    textureStore(output, vec2<i32>(id.xy), vec4(color, alpha));
 }

@@ -102,7 +102,7 @@ fn setup_enviroment(
                 fov: fov_y,
                 ..default()
             }),
-            Transform::from_xyz(0., 10., 0.),
+            Transform::from_xyz(0., 64., 0.),
             Msaa::Off,
             DepthPrepass,
         ))

@@ -1,4 +1,4 @@
-mod chunk;
+pub mod chunk;
 mod node;
 mod res;
 mod serialize;
@@ -46,20 +46,6 @@ impl Default for Contree {
 }
 
 impl Contree {
-    pub fn new(max_size: usize) -> Self {
-        Contree {
-           root: Arc::new(node::DagNode::default()),
-            max_size,
-            chunks: HashMap::new(),
-            chunk_size: 64,
-            offset: IVec3::ZERO,
-            root_hash: 0,
-            serialized_cache: None, // Cache for serialized data
-            gpu_nodes_cache: None,  // Cache for GPU nodes
-            update_cache: false,
-        }
-    }
-
     pub fn from_serialized(bits: &mut Vec<u8>, root_size: usize, max_size: usize)  {
         //Call deserialize
         //Seperate into chunks
@@ -113,7 +99,12 @@ impl Contree {
         let block_max = block_min + IVec3::splat(self.chunk_size  as i32);
         block_min.cmplt(max).all() && block_max.cmpgt(min).all()
     }
-
+    pub fn add_chunk(&mut self, chunk_coord: IVec3, chunk_data: chunk::ContreeChunk) {
+        self.chunks.insert(chunk_coord,chunk_data);
+    }
+    pub fn set_chunk_size(&mut self, chunk_size: usize) {
+        self.chunk_size = chunk_size;
+    }
     //-------------------------------- ADD AND REMOVE ----------------------------------------//
     pub fn insert(&mut self, point: IVec3, material_id: Option<u8>, an_level: Option<u8>) {
         let (chunk_coord,local) = self.localize_to_chunk(point);
@@ -265,16 +256,16 @@ impl Contree {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        for (i, node) in gpu_data.iter().enumerate() {
-            let not_a_leaf = (node.material & 0x8000_0000) != 0;
-            let material_index = node.material & 0xFF;
-            let mask_low = (node.child_mask & 0xFFFF_FFFF) as u32;
-            let mask_high = (node.child_mask >> 32) as u32;
-            println!(
-                "GPU Node {}: child_mask: low {:032b} high {:032b}, first_child_idx: {}, material: {}, not_a_leaf: {}",
-                i, mask_low, mask_high, node.first_child_idx, material_index, not_a_leaf
-            );
-        }
+        // for (i, node) in gpu_data.iter().enumerate() {
+        //     let not_a_leaf = (node.material & 0x8000_0000) != 0;
+        //     let material_index = node.material & 0xFF;
+        //     let mask_low = (node.child_mask & 0xFFFF_FFFF) as u32;
+        //     let mask_high = (node.child_mask >> 32) as u32;
+        //     println!(
+        //         "GPU Node {}: child_mask: low {:032b} high {:032b}, first_child_idx: {}, material: {}, not_a_leaf: {}",
+        //         i, mask_low, mask_high, node.first_child_idx, material_index, not_a_leaf
+        //     );
+        // }
 
         let mut packed_array: Vec<i32> = Vec::new();
         for node in gpu_data.iter() {

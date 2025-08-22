@@ -5,15 +5,15 @@ use bevy_rand::prelude::ChaCha12Rng;
 use bevy_rand::traits::ForkableSeed;
 use bevy_rand::traits::SeedSource;
 
-use crate::shared::res::SVTPushConsts;
+
 
 use super::compute_system;
 use super::flycam;
 use super::shared;
+use super::contree::chunk;
 
 mod chunks;
 mod enviroment;
-mod events;
 mod features;
 
 pub struct WorldBuilderPlugins;
@@ -27,7 +27,6 @@ impl PluginGroup for WorldBuilderPlugins {
             .add(MaterialPlugin::<compute_system::ComputeRenderMaterial>::default())
             .add(enviroment::EnviromentPlugin)
             .add(chunks::ChunkManagerPlugin)
-            .add(events::handler::EventHandlerPlugin)
             .add(compute_system::ComputeSystemPlugin)
     }
 }
@@ -36,10 +35,10 @@ struct WorldBuilderPlugin;
 
 impl Plugin for WorldBuilderPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(SVTPushConsts::default())
+        app.insert_resource(shared::res::SVTPushConsts::default())
             .insert_resource(shared::res::WorldBuilderResource::default())
             .add_systems(
-                OnEnter(shared::GameState::InGame),
+                OnExit(shared::GameState::InMenu),
                 setup.run_if(not(resource_exists::<shared::res::IsGamePrepared>)),
             );
     }
@@ -48,25 +47,13 @@ impl Plugin for WorldBuilderPlugin {
 fn setup(
     mut rng: GlobalEntropy<ChaCha12Rng>,
     mut state: ResMut<shared::res::WorldBuilderResource>,
-    mut push: ResMut<SVTPushConsts>,
+    mut push: ResMut<shared::res::SVTPushConsts>,
 ) {
     let binding = rng.fork_seed();
     let seed: &[u8; 32] = binding.get_seed();
     state.noise_seed = shared::maths::get_noise_seed(seed);
-    for x in 0..512 {
-        for y in 0..64 {
-             for z in 0..512 {
-                state.contree.insert(ivec3(x,y,z), Some(1),None);
-             }
-        }
-    }
-    state.contree.unify_chunks();
-    // state.contree.print_root();
     (state.file_data, state.gpu_data) = state.contree.compress_data();
-    println!("root_size: {}", state.contree.get_root_size());
-    
-    println!("root_min: {:?}", state.contree.get_root_min());
-    println!("offset: {:?}", state.contree.get_offset());
+
     push.root_min = (state.contree.get_root_min() + state.contree.get_offset()).as_vec3();
     push.root_size = state.contree.get_root_size() as f32;
 }

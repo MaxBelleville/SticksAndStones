@@ -265,6 +265,7 @@ impl ContreeNodePool {
                 if node.tree_scale < 4 {
                   //   println!("{} {:?} {} {}", local, material, pool_idx, child_index);
                     node.leaves.set(material, Some(child_index));
+                    node.pool_idx = None;
                     return;
                 }
                 need_subdivide = node.pool_idx.is_none();
@@ -281,6 +282,10 @@ impl ContreeNodePool {
     pub fn subdivide(&mut self, pool_idx: usize) {
         if self.storage[pool_idx].tree_scale < 4 {
             return;
+        }
+
+        if self.storage[pool_idx].pool_idx.is_some() {
+            return; // already subdivided
         }
 
         let child_size = self.storage[pool_idx].tree_scale / 4;
@@ -312,7 +317,7 @@ impl ContreeNodePool {
 
 
     pub fn trim_single_64(&mut self, root_idx: usize) -> IVec3 {
-        let mut current_idx = root_idx;
+        let current_idx = root_idx;
         let mut offset = IVec3::ZERO;
 
         // old_min computed from the original root extent (matches original node-based impl)
