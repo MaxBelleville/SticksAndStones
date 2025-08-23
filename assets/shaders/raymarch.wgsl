@@ -19,7 +19,7 @@ struct PushConstants {
 const NOT_A_LEAF_FLAG: u32 = 2147483648u;
 const MAX_STEPS: u32 = 1024u;
 const EPSILON: f32 = 1e-5;
-const MAX_DIST: f32 = 1000.0;
+const MAX_DIST: f32 = 2000.0;
 
 @group(0) @binding(0) var input: texture_storage_2d<rgba8unorm, read>;
 @group(0) @binding(1) var output: texture_storage_2d<rgba8unorm, write>;
@@ -194,45 +194,6 @@ fn gradient(p: vec3<i32>) -> vec3<f32> {
         occupancy(p + vec3(0,0,1)) - occupancy(p + vec3(0,0,-1))
     ));
 }
-// Corner helper
-fn occ_i(i: vec3<i32>) -> f32 {
-    return select(-1.0, 1.0, lookup_voxel(i)); // reuse your SVO lookup
-}
-
-// Trilinear blend of ±1 occupancy at the 8 cell corners around p
-fn density(p: vec3<f32>) -> f32 {
-    let base = vec3<i32>(floor(p));
-    let f = fract(p);
-
-    let c000 = occ_i(base + vec3<i32>(0,0,0));
-    let c100 = occ_i(base + vec3<i32>(1,0,0));
-    let c010 = occ_i(base + vec3<i32>(0,1,0));
-    let c110 = occ_i(base + vec3<i32>(1,1,0));
-    let c001 = occ_i(base + vec3<i32>(0,0,1));
-    let c101 = occ_i(base + vec3<i32>(1,0,1));
-    let c011 = occ_i(base + vec3<i32>(0,1,1));
-    let c111 = occ_i(base + vec3<i32>(1,1,1));
-
-    let x00 = mix(c000, c100, f.x);
-    let x10 = mix(c010, c110, f.x);
-    let x01 = mix(c001, c101, f.x);
-    let x11 = mix(c011, c111, f.x);
-    let y0  = mix(x00,  x10,  f.y);
-    let y1  = mix(x01,  x11,  f.y);
-    return mix(y0, y1, f.z);
-}
-
-// Smoother normal from density field
-fn density_normal(p: vec3<f32>) -> vec3<f32> {
-    let eps = 0.5773; // 1/sqrt(3)
-    let d1 = density(p + eps*vec3<f32>(1, -1, -1));
-    let d2 = density(p + eps*vec3<f32>(-1, 1, -1));
-    let d3 = density(p + eps*vec3<f32>(-1, -1, 1));
-    let d4 = density(p + eps*vec3<f32>(1, 1, 1));
-    return normalize(vec3<f32>(d1 - d2 - d3 + d4,
-                               -d1 + d2 - d3 + d4,
-                               -d1 - d2 + d3 + d4));
-}
 
 fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
     let bmin = push.root_min;
@@ -247,25 +208,25 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
     var t: f32 = max(tb.x, 0.0) + EPSILON;
     var pos: vec3<f32> = ray_o + ray_d * t;
 
-    // Track previous sample (init to occupancy)
+    // Track previous sample (init to current)
     var prev_pos: vec3<f32> = pos;
-    var prev_occ: f32 = select(-1.0, 1.0, lookup_voxel(vec3<i32>(floor(pos))));
+    var prev_occ: f32 = occupancy(vec3<i32>(floor(pos)));
 
     // DDA stepping: track which voxel we are in
     var voxel = vec3<i32>(floor(pos));
-
+    
     for (var steps: u32 = 0u; steps < MAX_STEPS; steps = steps + 1u) {
-        // Fast occupancy check (cheap)
-        let occ: f32 = select(-1.0, 1.0, lookup_voxel(voxel));
+        // check voxel occupancy
+        let occ: f32 = occupancy(voxel);
 
         // detect sign change (air -> solid)
         if (occ > 0.0 && prev_occ < 0.0) {
-            // crossing detected → compute density & gradient only here
-            let alpha = prev_occ / (prev_occ - occ);
-            let p_cross = mix(prev_pos, pos, alpha);
+            // interpolate crossing point
+            let alpha: f32 = prev_occ / (prev_occ - occ); // in [0,1]
+            let p_cross: vec3<f32> = mix(prev_pos, pos, alpha);
 
-            // use fast density gradient
-            let n = density_normal(p_cross);
+            // gradient normal
+            let n = gradient(vec3<i32>(floor(p_cross)));
 
             return Hit(p_cross, n, 1u, true, t);
         }
@@ -275,18 +236,18 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
         let voxel_max: vec3<f32> = voxel_min + 1.0;
         let tin: vec2<f32> = intersect_aabb(ray_o, ray_d, voxel_min, voxel_max);
 
+        // advance to exit point of this voxel
         if (tin.x > tin.y) {
-            t = t + 0.05;
+            t = t + 0.0031;
         } else {
-            t = tin.y + 0.05;
+            t = tin.y + 0.0031;
         }
-
         if (t >= MAX_DIST) { break; }
-
-        // update positions and previous occupancy
+        
+        // update positions
         prev_pos = pos;
         prev_occ = occ;
-
+        
         pos = ray_o + ray_d * t;
         voxel = vec3<i32>(floor(pos));
     }
@@ -330,35 +291,34 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= u32(push.screen_size.x) || id.y >= u32(push.screen_size.y)) {
         return;
     }
-
-    let uv = vec2<f32>(id.xy) / push.screen_size;
+    
+    let uv = ((vec2<f32>(id.xy)) / push.screen_size);
+    //Reduce skew due to percision issue on fullscreen.
     let aspect = push.screen_size.x / push.screen_size.y;
 
-    // camera ray
+   
+    // Calculate the ray direction
     let dir_camera = screen_uv_to_ray_dir(uv, push.fov_y_deg, aspect);
-    let ray_org = env_data.cam_pos + dir_camera * EPSILON;
-
-    // run voxel/SDF raymarcher
+    let ray_org = env_data.cam_pos + dir_camera*EPSILON;
     let hit = raymarch_svt(ray_org, dir_camera);
 
-    var color = vec3<f32>(0.0);
     var alpha = 0.0;
+    var color = vec3<f32>(0.0);
 
-    if (hit.is_hit) {
+   if (hit.is_hit) {
         alpha = 1.0;
+      
+        let N = normalize(hit.normal);
+        let L = normalize(-vec3<f32>(env_data.sunx,env_data.suny,env_data.sunz));
+        var base_color = vec3<f32>(0.2, 0.7, 0.2); // default green
 
-        // shading only
-        let N = hit.normal; // already normalized by raymarch_svt
-        let L = normalize(env_data.sunx * env_data.cam_rotx +
-                          env_data.suny * env_data.cam_roty +
-                          env_data.sunz * env_data.cam_rotz);
-
-        let base_color = vec3<f32>(0.1, 0.6, 0.2);
         let lambert = max(dot(N, L), 0.0);
+        
+        // Add a little ambient so shadows aren’t pitch black
         let ambient = 0.2;
-
+ 
         color = base_color * (ambient + lambert);
     }
 
-    textureStore(output, vec2<i32>(id.xy), vec4(color, alpha));
+    textureStore(output, vec2<i32>(id.xy), vec4<f32>(color, alpha));
 }

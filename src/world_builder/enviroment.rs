@@ -82,11 +82,7 @@ fn setup_enviroment(
     let half_size = shared::maths::screen_size_quad(distance, fov_y, settings.dim);
     // Simple transform shape just for reference
     //Should draw infront of the compute shader plane
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::default())),
-        MeshMaterial3d(materials2.add(StandardMaterial::from(Color::srgb(0.8, 0.0, 0.8)))),
-        Transform::from_xyz(0., 0., 0.).with_scale(vec3(0.5, 0.5, 0.5)),
-    ));
+ 
     // Spawn our camera
     commands
         .spawn((
@@ -138,7 +134,7 @@ fn daylight_cycle(
     timer.0.tick(time.delta());
 
     if timer.0.finished() {
-        let t = atmo_data.time / 40.0;
+        let t = atmo_data.time / 60.0;
         let theta = t % std::f32::consts::TAU;
 
         let sun_dir = Vec3::new(theta.cos(), theta.sin(), 0.3 * theta.cos()).normalize();
