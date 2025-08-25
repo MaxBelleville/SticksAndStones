@@ -36,7 +36,7 @@ impl Plugin for EnviromentPlugin {
             ..default()
         })
         .insert_resource(CycleTimer(Timer::new(
-            std::time::Duration::from_millis(100),
+            std::time::Duration::from_millis(500),
             TimerMode::Repeating,
         )))
         .insert_resource(shared::res::AtmosphereUniformData {
@@ -134,7 +134,7 @@ fn daylight_cycle(
     timer.0.tick(time.delta());
 
     if timer.0.finished() {
-        let t = atmo_data.time / 60.0;
+        let t = atmo_data.time / 120.0;
         let theta = t % std::f32::consts::TAU;
 
         let sun_dir = Vec3::new(theta.cos(), theta.sin(), 0.3 * theta.cos()).normalize();

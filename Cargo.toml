@@ -17,7 +17,5 @@ bevy_atmosphere = "=0.13.0"
 bevy_enhanced_input = "0.14.1"
 
 bytemuck = "1.23.1"
-noisy_bevy = "0.10.1"
-rand_core = "0.9.3"
-bevy_rand = { version = "0.11.1", features = ["rand_chacha", "wyrand"] }
+noiz = "0.2.0"
 twox-hash = "2.1.1"

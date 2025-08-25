@@ -1,6 +1,6 @@
 pub mod chunk;
 mod node;
-mod res;
+pub mod res;
 mod serialize;
 
 use std::{collections::HashMap, sync::Arc};
@@ -58,6 +58,10 @@ impl Contree {
         self.root.get_voxel_extent()
     }
 
+    pub fn get_chunk_size(&self) -> usize {
+        self.chunk_size
+    }
+
     pub fn get_root_min(&self) -> IVec3 {
         IVec3::splat(-(self.root.get_voxel_extent() as i32) / 2)
     }
@@ -66,10 +70,10 @@ impl Contree {
         self.offset
     }
 
-    pub fn get_material(&self, point: IVec3) -> Option<u8> {
-        let (chunk_coord, local) = self.localize_to_chunk(point);
+    pub fn get_material(&self, mut voxel: shared::res::VoxelVec) -> Option<u8> {
+        let chunk_coord= voxel.localize(self.chunk_size as i32);
         if let Some(chunk) = self.chunks.get(&chunk_coord) {
-            return chunk.get_material(local);
+            return chunk.get_material(voxel.pos);
         }
 
         return None;
@@ -81,13 +85,6 @@ impl Contree {
             let mut path = Vec::new();
             self.root.print_tree(0, self.get_root_size(),self.offset, &mut path);
         }
-    }
-
-    pub fn localize_to_chunk(&self, point: IVec3) -> (IVec3, IVec3) {
-        let chunk_coord = shared::maths::div_floor_vec3(point, self.chunk_size as i32);
-        let local_pos = shared::maths::mod_floor_vec3(point, self.chunk_size as i32);
-      
-        return (chunk_coord, local_pos);
     }
 
     pub fn chunk_in_bounds(&self,chunk_coord: IVec3) -> bool {
@@ -106,27 +103,24 @@ impl Contree {
         self.chunk_size = chunk_size;
     }
     //-------------------------------- ADD AND REMOVE ----------------------------------------//
-    pub fn insert(&mut self, point: IVec3, material_id: Option<u8>, an_level: Option<u8>) {
-        let (chunk_coord,local) = self.localize_to_chunk(point);
+    pub fn build_voxels(&mut self, mut voxel: shared::res::VoxelVec) {
+        let chunk_coord = voxel.localize(self.chunk_size as i32);
 
         if !self.chunk_in_bounds(chunk_coord) {
             return;
         }
 
-        let max_level = (self.chunk_size as f32).log(4.0) as u8;
-        let chunk_level = an_level.map_or(0, |lvl| lvl.min(max_level));
-            
-        if material_id != None {
+        if voxel != None {
             let chunk = self
                 .chunks
                 .entry(chunk_coord)
                 .or_insert_with(|| (chunk::ContreeChunk::new(self.chunk_size)));
            
-            chunk.insert(local, material_id, chunk_level);
+            chunk.build_voxel(voxel);
 
         }
         else if let Some(chunk) = self.chunks.get_mut(&chunk_coord) {
-            chunk.insert(local, None, chunk_level);
+            chunk.build_voxel(voxel);
 
             // If chunk is now empty, drop it entirely
             if chunk.is_empty() {
@@ -135,76 +129,62 @@ impl Contree {
         }
     }
 
-    pub fn insert_batch(&mut self,points: Vec<IVec3>,material_id: Option<u8>,an_level: Option<u8>) 
+    pub fn build_all_voxels(&mut self,voxels: Vec<shared::res::VoxelVec>) 
     {
-        for point in points {
-             self.insert(point, material_id, an_level);
+        //Split into chunks then build.
+        for voxel in voxels {
+             self.build_voxels(voxel);
         }
     }
 
-    pub fn fill(&mut self, point: IVec3, material_id: Option<u8>, an_level: u8) {
-        self.insert(point, material_id, Some(an_level));
-    }
-
-    pub fn fill_batch(&mut self, points: Vec<IVec3>, material_id: Option<u8>, an_level: u8) {
-        self.insert_batch(points, material_id, Some(an_level));
-    }
-
-    pub fn remove(&mut self, point: IVec3) {
-        self.insert(point, None, None);
-    }
-
-    pub fn remove_batch(&mut self, points: Vec<IVec3>) {
-        self.insert_batch(points, None, None);
-    }
-
-    pub fn clear(&mut self, point: IVec3, an_level: u8) {
-        self.insert(point, None, Some(an_level));
-    }
-
-    pub fn clear_batch(&mut self, points: Vec<IVec3>, an_level: u8) {
-        self.insert_batch(points, None, Some(an_level));
-    }
     //----------------------------------- BUILD CHUNK ------------------------------------------//
 
-    pub fn unify_chunks(&mut self) {
-        // Allocate the root node
+   pub fn unify_chunks(&mut self) {
+        // New pool for unified tree
         let mut pool = node::ContreeNodePool::new();
 
         // Allocate the root node
-        let root_idx = pool.alloc_node(self.max_size/4);
-        let base = pool.alloc_children(self.max_size/16);
-        pool.get_child_mut(root_idx,0).set_pool_idx(Some(base));
-        // Subdivide once to create the first layer
-       
-        // Subdivide once to create the first layer
-        //pool.subdivide(root_idx, 0); // or: alloc_children inside subdivide if needed
+        let root_idx = pool.alloc_node(self.max_size / 4);
+        let base = pool.alloc_children(self.max_size / 16);
+        pool.get_child_mut(root_idx, 0).set_pool_idx(Some(base));
 
-        // Insert chunk data
+        // Collect voxel data from all chunks
+        let mut voxel_data = Vec::new();
         for (chunk_coord, chunk) in &self.chunks {
-            let mut voxel_data = Vec::new();
             chunk.collect_leaf_data(*chunk_coord, self.chunk_size, &mut voxel_data);
-
-            for (world_pos, mat, lod_depth) in voxel_data {
-              
-                let normalized = world_pos + IVec3::splat(self.max_size as i32 / 2);
-                pool.insert_local(root_idx, normalized, Some(mat), lod_depth);
-            }
         }
+
+        // Normalize voxel positions to unified space
+        for voxel in &mut voxel_data {
+            voxel.normalize(self.max_size as i32);
+        }
+
+        // Sort by Morton code for radix grouping
+        voxel_data.sort_unstable_by_key(|v| v.morton);
+
+        // Batch build all voxels in one go
+        let voxel_size = voxel_data.len();
+        pool.build_all_voxels(
+            root_idx,
+            voxel_data.as_mut(),
+            0,
+            voxel_size,
+            self.max_size,
+            IVec3::ZERO, // starting origin
+        );
 
         // 1. Trim single-octant layers
         self.offset = pool.trim_single_64(root_idx);
 
         // 2. Collapse fully filled subtrees
-        pool.collapse_filled(root_idx);
+        pool.collapse_filled(root_idx, self.chunk_size);
 
         // 3. DAGify
         let mut dag_cache = HashMap::new();
         let (dag_root, dag_hash) = pool.dagify(root_idx, &mut dag_cache);
-
         self.root = dag_root;
         self.root_hash = dag_hash;
-       
+
         self.update_cache = true;
     }
     //------------------------------------ SERIALIZE -------------------------------------------//
@@ -248,14 +228,14 @@ impl Contree {
             bits.push(0);
         }
 
-        println!("Serialized for save {} bytes length", bits.len());
-        println!(
-            "Serialized data: [{}]",
-            bits.iter()
-                .map(|b| format!("{:08b}", b))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+        // println!("Serialized for save {} bytes length", bits.len());
+        // println!(
+        //     "Serialized data: [{}]",
+        //     bits.iter()
+        //         .map(|b| format!("{:08b}", b))
+        //         .collect::<Vec<_>>()
+        //         .join(" ")
+        // );
         // for (i, node) in gpu_data.iter().enumerate() {
         //     let not_a_leaf = (node.material & 0x8000_0000) != 0;
         //     let material_index = node.material & 0xFF;

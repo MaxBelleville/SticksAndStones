@@ -14,6 +14,8 @@ pub struct SvtGpuNode {
     pub material: u32, // material ID or surface info max value 255 = leaf element value to be used later ex grass
 } //Given that material from contree_node is u8, we can have reserved bits
 
+
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum LeafData {
     Empty,
@@ -182,14 +184,14 @@ impl LeafData {
         tree_scale: usize,
         root_size: usize,
         offset: IVec3,
-        path: &mut Vec<Option<u8>>,
+        path: &mut Vec<u8>,
     ) {
         let indent = "  ".repeat(depth * 2);
         match self {
             LeafData::Empty => {}
             LeafData::Uniform(mat) => {
                 for i in 0..64 {
-                    path.push(Some(i as u8));
+                    path.push(i as u8);
                     let pos = shared::maths::pathtrace_to_world_pos(root_size, path);
                     println!(
                         "{}Leaf(size={}, mat={}, depth={}, pos={})",
@@ -201,7 +203,7 @@ impl LeafData {
             LeafData::Arr(array) => {
                 for (i, mat) in array.iter().enumerate() {
                     if let Some(m) = mat {
-                        path.push(Some(i as u8));
+                        path.push(i as u8);
                         let pos = shared::maths::pathtrace_to_world_pos(root_size, path);
                         println!(
                             "{}Leaf(size={}, mat={}, depth={}, pos={})",

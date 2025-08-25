@@ -1,8 +1,6 @@
 
 use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*};
 use bevy_enhanced_input::prelude::*;
-use bevy_rand::prelude::{ChaCha12Rng, EntropyPlugin};
-use noisy_bevy::NoisyShaderPlugin;
 
 
 mod shared;
@@ -38,8 +36,6 @@ fn main() {
             DefaultPlugins.set(ImagePlugin::default_nearest()),
             FrameTimeDiagnosticsPlugin::default(),
             window_manager::WindowManagerPlugin,
-            EntropyPlugin::<ChaCha12Rng>::default(),
-            NoisyShaderPlugin,
             EnhancedInputPlugin,
             ui::UIPlugins,
             world_builder::WorldBuilderPlugins,

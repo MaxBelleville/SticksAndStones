@@ -1,10 +1,5 @@
 use bevy::{app::PluginGroupBuilder, prelude::*};
 use bevy_atmosphere::plugin::AtmospherePlugin;
-use bevy_rand::global::GlobalEntropy;
-use bevy_rand::prelude::ChaCha12Rng;
-use bevy_rand::traits::ForkableSeed;
-use bevy_rand::traits::SeedSource;
-
 
 
 use super::compute_system;
@@ -45,15 +40,12 @@ impl Plugin for WorldBuilderPlugin {
 }
 
 fn setup(
-    mut rng: GlobalEntropy<ChaCha12Rng>,
     mut state: ResMut<shared::res::WorldBuilderResource>,
     mut push: ResMut<shared::res::SVTPushConsts>,
 ) {
-    let binding = rng.fork_seed();
-    let seed: &[u8; 32] = binding.get_seed();
-    state.noise_seed = shared::maths::get_noise_seed(seed);
     (state.file_data, state.gpu_data) = state.contree.compress_data();
 
     push.root_min = (state.contree.get_root_min() + state.contree.get_offset()).as_vec3();
     push.root_size = state.contree.get_root_size() as f32;
+
 }

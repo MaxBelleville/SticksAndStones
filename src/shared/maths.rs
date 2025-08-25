@@ -23,13 +23,72 @@ pub fn screen_size_quad(dist: f32, fov: f32, dim: Vec4,) -> Vec2 {
 }
 
 #[inline]
-pub fn ileave_two0(input: usize) -> usize {
+pub fn mask2(input: usize) -> usize {
     input & 0b11 // Only 2 bits per axis (values 0–3)
 }
 #[inline]
 pub fn ileave3(pos: IVec3) -> usize {
-    ((ileave_two0(pos.z as usize) << 4) | (ileave_two0(pos.y as usize) << 2) | ileave_two0(pos.x as usize)) as usize
+    ((mask2(pos.z as usize)) | (mask2(pos.y as usize) << 2) | mask2(pos.x as usize) << 4) as usize
 }
+
+#[inline]
+fn part1by2(n: u32) -> u64 {
+    let mut x = n as u64 & 0x1f_ffff; // 21 bits max
+    x = (x | (x << 32)) & 0x1f00_0000_00ff_ff;
+    x = (x | (x << 16)) & 0x1f00_00ff_0000_ff;
+    x = (x | (x << 8))  & 0x100f_00f0_0f00_f00f;
+    x = (x | (x << 4))  & 0x10c3_0c30_c30c_30c3;
+    x = (x | (x << 2))  & 0x1249_2492_4924_9249;
+    x
+}
+
+#[inline]
+pub fn ileavechunk(x: u32, y: u32, z: u32) -> usize {
+    (part1by2(x) | (part1by2(y) << 1) | (part1by2(z) << 2)) as usize
+}
+
+#[inline]
+pub fn ilog4(mut s: usize) -> usize {
+    let mut l = 0;
+    while s > 1 { s /= 4; l += 1; }
+    l
+}
+
+// shift for selecting a child at the current node size
+#[inline]
+pub fn child_shift_from_size(size: usize) -> usize {
+    // At a node that covers `size` voxels per axis, there are log4(size) levels remaining
+    // and the child to pick is determined by the top 6 bits for that next level:
+    // shift = (levels_remaining - 1) * 6
+    let levels_remaining = ilog4(size);
+    (levels_remaining - 1) * 6
+}
+
+
+#[inline]
+pub fn child_index(morton: usize, shift: usize) -> usize {
+    // bit layout at (morton >> shift) low 6 bits:
+    // bit 0 = x0, bit1 = y0, bit2 = z0, bit3 = x1, bit4 = y1, bit5 = z1
+    let b0 = ((morton >> shift) & 1) as usize;
+    let b1 = ((morton >> (shift + 1)) & 1) as usize;
+    let b2 = ((morton >> (shift + 2)) & 1) as usize;
+    let b3 = ((morton >> (shift + 3)) & 1) as usize;
+    let b4 = ((morton >> (shift + 4)) & 1) as usize;
+    let b5 = ((morton >> (shift + 5)) & 1) as usize;
+
+    let x = (b3 << 1) | b0; // x1x0
+    let y = (b4 << 1) | b1; // y1y0
+    let z = (b5 << 1) | b2; // z1z0
+
+    (x << 4) | (y << 2) | z
+}
+
+// Extent in voxels per axis that a lod-level covers (level=0 -> 1, level=1 -> 4, ...)
+#[inline]
+pub fn level_extent(level: u8) -> usize {
+    1 << (2 * level as usize) // 4^level
+}
+
 #[inline]
 pub fn div_floor(a: i32, b: i32) -> i32 {
     let d = a / b;
@@ -57,26 +116,26 @@ pub fn mod_floor_vec3(a: IVec3, b: i32) -> IVec3 {
 
 
 #[inline]
-pub fn deileave3(idx: usize) -> IVec3 {
-    let xi = ileave_two0(idx) as i32;
-    let yi = ileave_two0(idx >> 2) as i32;
-    let zi = ileave_two0(idx >> 4) as i32;
+pub fn deileave3(idx: usize,child_size: i32) -> IVec3 {
+    let xi = mask2(idx >> 4) as i32;
+    let yi = mask2(idx >> 2) as i32;
+    let zi = mask2(idx) as i32;
 
-    IVec3::new(xi,yi,zi)
+    IVec3::new(xi,yi,zi)* child_size
 }
 #[inline]
 pub fn pathtrace_to_world_pos(
     root_size: usize,
-    path: &[Option<u8>],
+    paths: &[u8],
 ) -> IVec3 {
     let mut pos =  IVec3::splat(-(root_size as i32) / 2);
     let mut size = root_size as i32;
 
-    for &optional in path {
-        let i = optional.unwrap_or(0);
+    for &path in paths {
+        let i = path;
         let child_width = size / 4;
         
-        pos += deileave3(i as usize) * child_width;
+        pos += deileave3(i as usize,child_width);
         // godot_print!("{} {} {}", i , contree_utils::deileave3(i as usize), size);
         size = child_width;
     }
