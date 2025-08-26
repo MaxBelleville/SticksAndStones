@@ -27,14 +27,16 @@ impl Plugin for ChunkManagerPlugin {
 
 fn init_chunk(mut chunk_tasks: ResMut<ChunkTasks>,state: ResMut<shared::res::WorldBuilderResource>, world: ResMut<shared::res::AtmosphereUniformData>,) {
       let task_pool = AsyncComputeTaskPool::get();
-      let chunks = collect_chunk_starting();
-      let noise = Noise::<common_noise::Fbm<MixCellGradients<
+       let chunk_coords = collect_chunk_coords();
+
+    let mut noise = Noise::<common_noise::Fbm<MixCellGradients<
         OrthoGrid,
         Smoothstep,
-        QuickGradients
+        QuickGradients,
     >>>::default();
-     for (chunk_coord,locals) in chunks {
-       
+    noise.seed.re_seed();
+
+    for chunk_coord in chunk_coords {
         if chunk_tasks.data.contains_key(&chunk_coord) {
             continue;
         }
@@ -42,26 +44,33 @@ fn init_chunk(mut chunk_tasks: ResMut<ChunkTasks>,state: ResMut<shared::res::Wor
             continue;
         }
 
+        // Spawn one async task *per chunk*, not per voxel
+        let noise = noise.clone(); // make it Send
         let task = task_pool.spawn(async move {
-            let mut chunk =  chunk::ContreeChunk::default();
+           
             let mut voxels = Vec::new();
-            for local_voxel in locals {
-                let world_pos = local_voxel.chunk_to_world(chunk_coord, 64).as_vec3();
-                let height: f32 = noise.sample(world_pos * 0.01);
-                if height >= world_pos.y * 0.02 {
-                    voxels.push(local_voxel);
+
+            // Build local coords (64³)
+            for x in 0..64 {
+                for y in 0..64 {
+                    for z in 0..64 {
+                        let local_voxel = shared::res::VoxelVec::new(ivec3(x, y, z), Some(1), 0);
+                        let world_pos = local_voxel.chunk_to_world(chunk_coord).as_vec3();
+                        let height: f32 = noise.sample(world_pos * 0.01);
+                        if height >= world_pos.y * 0.02 {
+                            voxels.push(local_voxel);
+                        }
+                    }
                 }
             }
-            voxels.sort_unstable_by_key(|v| v.morton);
-            
+            let mut chunk = chunk::ContreeChunk::new(voxels.len());
+            //voxels.sort_unstable_by_key(|v| v.morton);
             chunk.build_all_voxels(voxels);
-             
-
             chunk
         });
-        
+
         chunk_tasks.data.insert(chunk_coord, task);
-      }
+    }
 }
 
 fn register_chunk(mut chunk_tasks: ResMut<ChunkTasks>,
@@ -96,27 +105,14 @@ fn register_chunk(mut chunk_tasks: ResMut<ChunkTasks>,
 }
 
 
-fn collect_chunk_starting() -> HashMap<IVec3,Vec<shared::res::VoxelVec>> {
-    
-    let mut chunks = HashMap::new();
-    let mut locals = Vec::new();
-    for x in 0..64 {
-        for y in 0..64 {
-            for z in 0..64 {
-                locals.push(shared::res::VoxelVec::new(ivec3(x,y,z),Some(1),0));
-            }
-        }
-    }
-    
+fn collect_chunk_coords() -> Vec<IVec3> {
+    let mut coords = Vec::new();
     for x in -4..4 {
         for y in -1..1 {
             for z in -4..4 {
-                 chunks.entry(ivec3(x,y,z))
-                    .or_insert_with(Vec::new)
-                    .append(&mut locals.clone());
+                coords.push(ivec3(x, y, z));
             }
         }
     }
-
-    chunks
+    coords
 }

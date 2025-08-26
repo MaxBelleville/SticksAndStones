@@ -47,23 +47,6 @@ pub fn ileavechunk(x: u32, y: u32, z: u32) -> usize {
     (part1by2(x) | (part1by2(y) << 1) | (part1by2(z) << 2)) as usize
 }
 
-#[inline]
-pub fn ilog4(mut s: usize) -> usize {
-    let mut l = 0;
-    while s > 1 { s /= 4; l += 1; }
-    l
-}
-
-// shift for selecting a child at the current node size
-#[inline]
-pub fn child_shift_from_size(size: usize) -> usize {
-    // At a node that covers `size` voxels per axis, there are log4(size) levels remaining
-    // and the child to pick is determined by the top 6 bits for that next level:
-    // shift = (levels_remaining - 1) * 6
-    let levels_remaining = ilog4(size);
-    (levels_remaining - 1) * 6
-}
-
 
 #[inline]
 pub fn child_index(morton: usize, shift: usize) -> usize {
@@ -112,6 +95,50 @@ fn mod_floor(a: i32, b: i32) -> i32 {
 #[inline]
 pub fn mod_floor_vec3(a: IVec3, b: i32) -> IVec3 {
     ivec3(mod_floor(a.x,b),mod_floor(a.y,b),mod_floor(a.z,b))
+}
+
+#[inline]
+pub fn log4(size: usize) -> u32 {
+    // assumes size is a power of 4; add checks if you want
+    (size as f64).log(4.0).round() as u32
+}
+
+#[inline]
+pub fn pow64(exp: u32) -> usize {
+    // 64^exp
+    1usize.checked_shl(6 * exp).unwrap_or(usize::MAX)
+}
+
+#[inline]
+pub fn full_tree_nodes(chunk_size: usize) -> usize {
+    let d = log4(chunk_size);             // chunk_size = 4^d
+    let k = d.saturating_sub(1);            // subdivision levels until 4^3
+    let top = pow64(d);                   // 64^d
+    (top - 1) / 63                          // sum_{i=0..k} 64^i
+}
+pub fn estimate_chunk(voxel_count: usize) -> usize {
+    if voxel_count == 0 {
+        return 1; // just root
+    }
+    let leaves = voxel_count; // pessimistic: each voxel could force a leaf
+    let parents = voxel_count / 64;
+    leaves + parents * 4 // add some slack
+}
+
+pub fn estimate_nodes(voxel_count: usize, chunk_size: usize) -> usize {
+    if voxel_count == 0 {
+        return 1 + 64; // you allocate root + first 64 children immediately
+    }
+    let d = log4(chunk_size);
+    let k = d.saturating_sub(1);
+    let m = pow64(k);                     // max number of 4^3 leaves = 64^k
+
+    let l_max = voxel_count.min(m);         // worst-case leaves (one voxel per 4^3 cell)
+    let internal_cap = (m - 1) / 63;        // full internal nodes (root..level k-1)
+    let i_max = (l_max.saturating_mul(k as usize)).min(internal_cap);
+
+    let n_upper = l_max + i_max;
+    n_upper.max(1 + 64)                     // ensure room for your initial alloc
 }
 
 

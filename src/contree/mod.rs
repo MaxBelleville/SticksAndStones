@@ -20,7 +20,6 @@ pub struct Contree {
     root_hash: u64,
     max_size: usize, //multiple of 4
     chunks: HashMap<IVec3, chunk::ContreeChunk>,
-    chunk_size: usize,
     offset: IVec3,
 
     update_cache:bool,
@@ -34,7 +33,6 @@ impl Default for Contree {
             root: Arc::new(node::DagNode::default()),
             max_size: 4096, //This is basically 4096x4096x4096 or 68 billion possible voxels.
             chunks: HashMap::new(),
-            chunk_size: 64,
             offset: IVec3::ZERO,
             root_hash: 0,
             serialized_cache: None, // Cache for serialized data
@@ -58,10 +56,6 @@ impl Contree {
         self.root.get_voxel_extent()
     }
 
-    pub fn get_chunk_size(&self) -> usize {
-        self.chunk_size
-    }
-
     pub fn get_root_min(&self) -> IVec3 {
         IVec3::splat(-(self.root.get_voxel_extent() as i32) / 2)
     }
@@ -71,7 +65,7 @@ impl Contree {
     }
 
     pub fn get_material(&self, mut voxel: shared::res::VoxelVec) -> Option<u8> {
-        let chunk_coord= voxel.localize(self.chunk_size as i32);
+        let chunk_coord= voxel.localize();
         if let Some(chunk) = self.chunks.get(&chunk_coord) {
             return chunk.get_material(voxel.pos);
         }
@@ -92,19 +86,17 @@ impl Contree {
         let min = -IVec3::splat(half as i32);
         let max =  IVec3::splat(half as i32);
 
-        let block_min = chunk_coord * self.chunk_size  as i32;
-        let block_max = block_min + IVec3::splat(self.chunk_size  as i32);
+        let block_min = chunk_coord * 64;
+        let block_max = block_min + IVec3::splat(64);
         block_min.cmplt(max).all() && block_max.cmpgt(min).all()
     }
     pub fn add_chunk(&mut self, chunk_coord: IVec3, chunk_data: chunk::ContreeChunk) {
         self.chunks.insert(chunk_coord,chunk_data);
     }
-    pub fn set_chunk_size(&mut self, chunk_size: usize) {
-        self.chunk_size = chunk_size;
-    }
+ 
     //-------------------------------- ADD AND REMOVE ----------------------------------------//
     pub fn build_voxels(&mut self, mut voxel: shared::res::VoxelVec) {
-        let chunk_coord = voxel.localize(self.chunk_size as i32);
+        let chunk_coord = voxel.localize();
 
         if !self.chunk_in_bounds(chunk_coord) {
             return;
@@ -114,7 +106,7 @@ impl Contree {
             let chunk = self
                 .chunks
                 .entry(chunk_coord)
-                .or_insert_with(|| (chunk::ContreeChunk::new(self.chunk_size)));
+                .or_insert_with(|| (chunk::ContreeChunk::new(shared::maths::full_tree_nodes(64))));
            
             chunk.build_voxel(voxel);
 
@@ -140,18 +132,11 @@ impl Contree {
     //----------------------------------- BUILD CHUNK ------------------------------------------//
 
    pub fn unify_chunks(&mut self) {
-        // New pool for unified tree
-        let mut pool = node::ContreeNodePool::new();
-
-        // Allocate the root node
-        let root_idx = pool.alloc_node(self.max_size / 4);
-        let base = pool.alloc_children(self.max_size / 16);
-        pool.get_child_mut(root_idx, 0).set_pool_idx(Some(base));
-
+ 
         // Collect voxel data from all chunks
         let mut voxel_data = Vec::new();
         for (chunk_coord, chunk) in &self.chunks {
-            chunk.collect_leaf_data(*chunk_coord, self.chunk_size, &mut voxel_data);
+            chunk.collect_leaf_data(*chunk_coord, &mut voxel_data);
         }
 
         // Normalize voxel positions to unified space
@@ -159,8 +144,18 @@ impl Contree {
             voxel.normalize(self.max_size as i32);
         }
 
+        // New pool for unified tree
+        let mut pool = node::ContreeNodePool::new(
+            shared::maths::estimate_nodes(voxel_data.len(), self.max_size));
+
+        // Allocate the root node
+        let root_idx = pool.get_root_node(self.max_size / 4);
+        let base = pool.get_next_children_block(self.max_size / 16);
+        pool.get_child_mut(root_idx, 0).set_pool_idx(Some(base));
+
+
         // Sort by Morton code for radix grouping
-        voxel_data.sort_unstable_by_key(|v| v.morton);
+        //voxel_data.sort_unstable_by_key(|v| v.morton);
 
         // Batch build all voxels in one go
         let voxel_size = voxel_data.len();
@@ -177,7 +172,7 @@ impl Contree {
         self.offset = pool.trim_single_64(root_idx);
 
         // 2. Collapse fully filled subtrees
-        pool.collapse_filled(root_idx, self.chunk_size);
+        pool.collapse_filled(root_idx);
 
         // 3. DAGify
         let mut dag_cache = HashMap::new();

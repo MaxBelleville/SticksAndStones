@@ -15,12 +15,24 @@ pub struct ContreeNode {
     tree_scale: usize,       // Each node spans (tree_scale × 4)³ voxel so 4 tree_scale = 16³
     leaves: res::LeafData,   // Optional mat index
 }
+impl Default for ContreeNode {
+    fn default() -> Self {
+        ContreeNode {
+            pool_idx: None,
+            tree_scale:1,
+            leaves: res::LeafData::Empty,
+        }
+    }
+}
+
+
 impl ContreeNode {
     pub fn new(tree_scale: usize) -> Self {
         ContreeNode {
             pool_idx: None,
             tree_scale,
             leaves: res::LeafData::Empty,
+
         }
     }
 
@@ -63,6 +75,7 @@ pub struct ContreeNodePool {
     storage: Vec<ContreeNode>,
     free_list: Vec<usize>, // stores starting indices of freed child blocks
     pool_size: usize,
+    next_free_block: usize,
 }
 
 impl Default for ContreeNodePool {
@@ -71,17 +84,23 @@ impl Default for ContreeNodePool {
             storage: Vec::new(),
             free_list: Vec::new(),
             pool_size: 64,
+            next_free_block: 0,
         }
     }
 }
 
 //----------------------------------------- INIT ------------------------------------------------//
 impl ContreeNodePool {
-    pub fn new() -> Self {
+    pub fn new(total_nodes:usize,) -> Self {
+        let mut storage = Vec::with_capacity(total_nodes);
+           for _ in 0..total_nodes {
+            storage.push(ContreeNode::default()); // placeholder, tree_scale will be overwritten later
+        }
         ContreeNodePool {
-            storage: Vec::new(),
+            storage,
             free_list: Vec::new(),
             pool_size: 64,
+            next_free_block: 0,
         }
     }
     //---------------------------- GETTERS/ SETTERS / HELPERS ---------------------------------//
@@ -98,6 +117,7 @@ impl ContreeNodePool {
         &self.storage[pool_idx + child_idx]
     }
 
+    /// Access a child node mutably
     pub fn get_child_mut(&mut self, pool_idx: usize, child_idx: usize) -> &mut ContreeNode {
         &mut self.storage[pool_idx + child_idx]
     }
@@ -298,8 +318,8 @@ impl ContreeNodePool {
         vox: &[shared::res::VoxelVec], // sorted by morton ascending
         lo: usize,
         hi: usize,
-        size: usize,        // node extent in voxels per axis
-        origin: IVec3,      // implicit offset of this node in world-normalized coords
+        size: usize,   // node extent in voxels per axis
+        origin: IVec3, // implicit offset of this node in world-normalized coords
     ) {
         let n = hi - lo;
 
@@ -347,10 +367,15 @@ impl ContreeNodePool {
             // Otherwise write individual leaf cells (level==0 expected here).
             for v in &vox[lo..hi] {
                 // Compute local coord without mutating the voxel
-                let local = v.pos - origin;           // should be in [0..4)^3
-                debug_assert!(local.x >= 0 && local.x < 4
-                        && local.y >= 0 && local.y < 4
-                        && local.z >= 0 && local.z < 4);
+                let local = v.pos - origin; // should be in [0..4)^3
+                debug_assert!(
+                    local.x >= 0
+                        && local.x < 4
+                        && local.y >= 0
+                        && local.y < 4
+                        && local.z >= 0
+                        && local.z < 4
+                );
                 let child_index = shared::maths::ileave3(local) as usize;
                 node.leaves.set(v.mat, Some(child_index));
             }
@@ -368,7 +393,7 @@ impl ContreeNodePool {
         let base = self.storage[node_idx].pool_idx.unwrap();
 
         let child_size = size / 4;
-        let shift = (((size.trailing_zeros() / 2) - 1) * 6) as usize; 
+        let shift = (((size.trailing_zeros() / 2) - 1) * 6) as usize;
 
         // Walk contiguous spans that map to the same child (radix-style by top 6 Morton bits)
         let mut i = lo;
@@ -379,6 +404,74 @@ impl ContreeNodePool {
             let mut j = i;
             while j < hi && shared::maths::child_index(vox[j].morton, shift) == first_ci {
                 j += 1;
+            }
+            let child_origin = origin + shared::maths::deileave3(first_ci, child_size as i32);
+
+            // --- Early-out uniform span (gap-free) ---
+            // Only attempt if child is small and voxel span could possibly fill it
+            let span_len = j - i;
+            let max_cells = child_size * child_size * child_size;
+            let full_mask: u64 = (!0u64) >> (64 - max_cells.min(64));
+            if child_size <= 4 && span_len >= max_cells {
+                let mut mask: u64 = 0;
+                let mut uniform_mat: Option<u8> = None;
+                let mut full = true;
+
+                'outer: for v in &vox[i..j] {
+                    let extent = shared::maths::level_extent(v.level) as i32;
+                    let local_min = v.pos - child_origin;
+                    let local_max = local_min + IVec3::splat(extent - 1);
+
+                    // bounds check
+                    if local_min.cmplt(IVec3::ZERO).any()
+                        || local_max.cmpge(IVec3::splat(child_size as i32)).any()
+                    {
+                        full = false;
+                        break;
+                    }
+
+                    for x in local_min.x..=local_max.x {
+                        for y in local_min.y..=local_max.y {
+                            for z in local_min.z..=local_max.z {
+                                let idx = shared::maths::ileave3(IVec3::new(x, y, z)) as usize;
+                                let bit = 1u64 << idx;
+
+                                if (mask & bit) != 0 {
+                                    if uniform_mat != v.mat {
+                                        full = false;
+                                        break 'outer;
+                                    }
+                                } else {
+                                    mask |= bit;
+                                    if let Some(m) = v.mat {
+                                        if uniform_mat.is_none() {
+                                            uniform_mat = Some(m);
+                                        } else if uniform_mat != v.mat {
+                                            full = false;
+                                            break 'outer;
+                                        }
+                                    }
+                            
+                                    if mask == full_mask {
+                                        break 'outer;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if full && mask == full_mask {
+                    let child_idx = base + first_ci;
+                    let child = &mut self.storage[child_idx];
+                    child.leaves = res::LeafData::Uniform(uniform_mat.unwrap_or(0));
+                    if let Some(pool) = child.pool_idx.take() {
+                        self.free_list.push(pool);
+                    }
+                    child.pool_idx = None;
+                    i = j;
+                    continue;
+                }
             }
 
             // If this span is exactly one uniform voxel that covers the child node,
@@ -399,19 +492,13 @@ impl ContreeNodePool {
 
             // Otherwise descend into that child with an implicit origin
             let child_origin = origin + shared::maths::deileave3(first_ci, child_size as i32);
-            self.build_all_voxels(
-                base + first_ci,
-                vox,
-                i,
-                j,
-                child_size,
-                child_origin,
-            );
+            self.build_all_voxels(base + first_ci, vox, i, j, child_size, child_origin);
 
             i = j;
         }
     }
-    pub fn subdivide(&mut self, pool_idx: usize) {
+      pub fn subdivide(&mut self, pool_idx: usize) {
+   
         if self.storage[pool_idx].tree_scale < 4 {
             eprintln!("Out of bounds");
             return;
@@ -423,38 +510,52 @@ impl ContreeNodePool {
 
         let child_size = self.storage[pool_idx].tree_scale / 4;
 
-        // Store the offset into the pool
-        let new_block = if let Some(free_idx) = self.free_list.pop() {
+        // Use a block from free_list if available
+        let block_start = if let Some(free_idx) = self.free_list.pop() {
             // Reset old children
             for i in free_idx..free_idx + self.pool_size {
                 self.storage[i] = ContreeNode::new(child_size);
             }
             free_idx
         } else {
-            self.alloc_children(child_size)
+            // Already preallocated; pick the next unassigned block
+            let idx = self.next_free_block;
+            self.next_free_block += self.pool_size;
+            idx
         };
 
-        self.storage[pool_idx].pool_idx = Some(new_block);
+        self.storage[pool_idx].pool_idx = Some(block_start);
     }
 
     /// Allocate 64 children at once, return a mutable slice
-    pub fn alloc_children(&mut self, tree_scale: usize) -> usize {
-        let start = self.storage.len();
-        self.storage.reserve(self.pool_size);
+     pub fn get_root_node(&mut self, tree_scale: usize) -> usize {
+        let idx = self.next_free_block;
+        self.next_free_block += 1;
 
-        for _ in 0..self.pool_size {
-            self.storage.push(ContreeNode::new(tree_scale));
+        self.storage[idx] = ContreeNode::new(tree_scale);
+        idx
+    }
+
+    /// Get the next 64-node children block (already preallocated)
+    pub fn get_next_children_block(&mut self, tree_scale: usize) -> usize {
+        if let Some(free_idx) = self.free_list.pop() {
+            // Reuse a previously freed block
+            for i in free_idx..free_idx + self.pool_size {
+                self.storage[i] = ContreeNode::new(tree_scale);
+            }
+            free_idx
+        } else {
+            // Take next preallocated block
+            let idx = self.next_free_block;
+            self.next_free_block += self.pool_size;
+
+            for i in idx..idx + self.pool_size {
+                self.storage[i] = ContreeNode::new(tree_scale);
+            }
+            idx
         }
-
-        start
     }
 
-    pub fn alloc_node(&mut self, tree_scale: usize) -> usize {
-        let start = self.storage.len();
-        self.storage.push(ContreeNode::new(tree_scale));
-
-        start
-    }
 
     //------------------------------------- OPTOMIZE -------------------------------------------//
 
@@ -531,8 +632,8 @@ impl ContreeNodePool {
     }
 
     // Recursively collapses fully filled subtrees into a single node.
-    pub fn collapse_filled(&mut self, node_idx: usize, chunk_size: usize) {
-        if self.storage[node_idx].tree_scale == chunk_size / 4 {
+    pub fn collapse_filled(&mut self, node_idx: usize) {
+        if self.storage[node_idx].tree_scale == 64 / 4 {
             return;
         }
 
@@ -540,7 +641,7 @@ impl ContreeNodePool {
             // First, recursively collapse all children
 
             for child_idx in pool_idx..pool_idx + self.pool_size {
-                self.collapse_filled(child_idx, chunk_size);
+                self.collapse_filled(child_idx);
             }
             let children = &self.storage[pool_idx..pool_idx + self.pool_size];
             // Attempt to find the first child's leaf data

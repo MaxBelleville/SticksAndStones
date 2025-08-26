@@ -81,11 +81,11 @@ impl VoxelVec {
         }
     }
 
-    pub fn localize(&mut self, chunk_size: i32) -> IVec3 {
-        let chunk_coord = maths::div_floor_vec3(self.pos, chunk_size);
-        let local_pos = maths::mod_floor_vec3(self.pos, chunk_size);
+    pub fn localize(&mut self) -> IVec3 {
+        let chunk_coord = maths::div_floor_vec3(self.pos, 64);
+        let local_pos = maths::mod_floor_vec3(self.pos, 64);
 
-        let max_level = (chunk_size as f32).log(4.0) as u8;
+        let max_level = (64 as f32).log(4.0) as u8;
         if self.level > max_level {
             self.level = max_level;
         }
@@ -98,8 +98,8 @@ impl VoxelVec {
         self.update_morton();
     }
 
-    pub fn chunk_to_world(&self, chunk_pos:IVec3,chunk_size: i32) -> IVec3 {
-        (chunk_pos * chunk_size) + self.pos
+    pub fn chunk_to_world(&self, chunk_pos:IVec3) -> IVec3 {
+        (chunk_pos * 64) + self.pos
     }
 
     pub fn update_morton(&mut self) {
