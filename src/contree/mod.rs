@@ -1,5 +1,6 @@
 pub mod chunk;
 mod node;
+mod pool;
 pub mod res;
 mod serialize;
 
@@ -14,7 +15,7 @@ use super::shared;
     The main tree that handles collecting 'blocks' and converting them to the tree.
     Serialization/optomization of the entire tree and more highlevel tree operations.
 */
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Contree {
     root: Arc<node::DagNode>,
     root_hash: u64,
@@ -26,6 +27,20 @@ pub struct Contree {
     serialized_cache: Option<Vec<u8>>,
     gpu_nodes_cache: Option<Vec<res::SvtGpuNode>>,
 }
+//Note will not clone the chunk hashset so not usable in render mode 
+//But shouldn't be an issue.
+impl Clone for Contree {
+    fn clone(&self) -> Self {
+        Self { root: self.root.clone(), root_hash: self.root_hash.clone(), max_size: self.max_size.clone(), 
+            chunks: HashMap::new(),
+             offset: self.offset.clone(), 
+             update_cache: self.update_cache.clone(), 
+             serialized_cache: self.serialized_cache.clone(), 
+             gpu_nodes_cache: self.gpu_nodes_cache.clone() }
+    }
+}
+
+
 //-------------------------------------- INIT -----------------------------------------------//
 impl Default for Contree {
     fn default() -> Self {
@@ -73,6 +88,12 @@ impl Contree {
         return None;
     }
 
+    pub fn get_full_storage(&self, size: usize) -> Vec<node::ContreeNode> {
+        let total = shared::maths::total_nodes(size);
+        vec![node::ContreeNode::default();total]
+    }
+
+
     pub fn print_root(&self) {
         //Can only print after build.
         if self.root_hash!=0 {
@@ -106,7 +127,7 @@ impl Contree {
             let chunk = self
                 .chunks
                 .entry(chunk_coord)
-                .or_insert_with(|| (chunk::ContreeChunk::new(shared::maths::full_tree_nodes(64))));
+                .or_insert_with(|| (chunk::ContreeChunk::new(shared::maths::total_nodes(64))));
            
             chunk.build_voxel(voxel);
 
@@ -145,13 +166,13 @@ impl Contree {
         }
 
         // New pool for unified tree
-        let mut pool = node::ContreeNodePool::new(
+        let mut pool = pool::ContreeNodePool::new(
             shared::maths::estimate_nodes(voxel_data.len(), self.max_size));
 
         // Allocate the root node
         let root_idx = pool.get_root_node(self.max_size / 4);
         let base = pool.get_next_children_block(self.max_size / 16);
-        pool.get_child_mut(root_idx, 0).set_pool_idx(Some(base));
+        pool.get_child_mut(root_idx).set_pool_idx(Some(base));
 
 
         // Sort by Morton code for radix grouping
@@ -253,4 +274,6 @@ impl Contree {
         }
         (bits, packed_array)
     }
+    
+    
 }

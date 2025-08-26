@@ -98,47 +98,25 @@ pub fn mod_floor_vec3(a: IVec3, b: i32) -> IVec3 {
 }
 
 #[inline]
-pub fn log4(size: usize) -> u32 {
+pub fn log4(size: usize) -> usize {
     // assumes size is a power of 4; add checks if you want
-    (size as f64).log(4.0).round() as u32
+    (size as f32).log(4.0).round() as usize
 }
 
-#[inline]
-pub fn pow64(exp: u32) -> usize {
-    // 64^exp
-    1usize.checked_shl(6 * exp).unwrap_or(usize::MAX)
-}
-
-#[inline]
-pub fn full_tree_nodes(chunk_size: usize) -> usize {
-    let d = log4(chunk_size);             // chunk_size = 4^d
-    let k = d.saturating_sub(1);            // subdivision levels until 4^3
-    let top = pow64(d);                   // 64^d
-    (top - 1) / 63                          // sum_{i=0..k} 64^i
-}
-pub fn estimate_chunk(voxel_count: usize) -> usize {
-    if voxel_count == 0 {
-        return 1; // just root
+pub fn total_nodes(size:usize) -> usize  {
+    let d = log4(size);
+    let mut sum = 0;
+    for p in 0..=d {
+        sum+= (64 as u32).pow(d as u32);
     }
-    let leaves = voxel_count; // pessimistic: each voxel could force a leaf
-    let parents = voxel_count / 64;
-    leaves + parents * 4 // add some slack
+    sum as usize
 }
 
-pub fn estimate_nodes(voxel_count: usize, chunk_size: usize) -> usize {
-    if voxel_count == 0 {
-        return 1 + 64; // you allocate root + first 64 children immediately
-    }
-    let d = log4(chunk_size);
-    let k = d.saturating_sub(1);
-    let m = pow64(k);                     // max number of 4^3 leaves = 64^k
-
-    let l_max = voxel_count.min(m);         // worst-case leaves (one voxel per 4^3 cell)
-    let internal_cap = (m - 1) / 63;        // full internal nodes (root..level k-1)
-    let i_max = (l_max.saturating_mul(k as usize)).min(internal_cap);
-
-    let n_upper = l_max + i_max;
-    n_upper.max(1 + 64)                     // ensure room for your initial alloc
+pub fn estimate_nodes(voxel_count: usize, size: usize) -> usize {
+    let d = log4(size);
+    let top= 1.0 - (1.0/size as f32).powf(d as f32);
+    let bottom = 1.0 - (1.0/size as f32);
+    (voxel_count as f32*(top/bottom)).round() as usize
 }
 
 
