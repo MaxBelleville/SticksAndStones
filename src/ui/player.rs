@@ -1,20 +1,13 @@
-use std::fmt::Write;
 
-use bevy::diagnostic::Diagnostics;
 use bevy::diagnostic::DiagnosticsStore;
 use bevy::prelude::*;
-use super::ButtonColors;
-use super::DisplayQuality;
-use super::MenuButtonAction;
-use super::MenuState;
-use super::SelectedOption;
-use super::TEXT_COLOR;
-use super::Volume;
-use super::shared;
+use bevy_lunex::prelude::*;
 
+use super::shared;
+use super::UICanvas;
 // Tag component used to tag entities added on the settings menu screen
 #[derive(Component)]
-struct OnPlayerUIScreen;
+struct PlayerUI;
 
 #[derive(Component)]
 struct PlayerPosTex;
@@ -25,54 +18,41 @@ impl Plugin for PlayerUIPlugin {
         app .add_systems(OnEnter(shared::GameState::InGame), player_ui_setup)
             .add_systems(
                 OnExit(shared::GameState::InGame),
-                shared::despawn::<OnPlayerUIScreen>,
+                shared::despawn::<PlayerPosTex>,
             ).add_systems(Update, update_player_pos.run_if(in_state(shared::GameState::InGame)));
     }
 }
 
 fn player_ui_setup(
     mut commands: Commands,
-    
+    asset_server: Res<AssetServer>,
+    container_query: Query<Entity, With<UICanvas>>,
 ) {
-      commands.spawn((
-        Node {
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            align_items: AlignItems::Start,
-            justify_content: JustifyContent::Start,
-            ..default()
-        },
-        OnPlayerUIScreen,
-        children![(
-            Node {
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            children![
-                // Display the game name
-                (
-                    Text::new("Sticks & Stones"),
-                    TextColor(TEXT_COLOR),
-                    TextFont {
-                        font_size: 24.0,
-                        ..default()
-                    },
-                    Node {
-                        margin: UiRect::all(Val::Px(10.0)),
-                        ..default()
-                    },
-                    PlayerPosTex
-                ),
-            ]
-        )]
-      ));
+    if let Ok(container) = container_query.single() {
+        commands.entity(container).with_children(|ui| {
+            ui.spawn((
+                // Position the text using the window layout's position and anchor
+                UiLayout::window().anchor(Anchor::TopLeft).pack(),
+                // This controls the height of the text, so 60% of the parent's node height
+                UiTextSize::from(Rh(5.0)),
+                // You can attach text like this
+                Text2d::new("Button"),
+                PlayerPosTex,
+                // Font size now works as "text resolution"
+                TextFont {
+                    font: asset_server.load("fonts/m6x11.ttf"),
+                    font_size: 64.0,
+                    ..Default::default()
+                },
+            ));
+        });
+    }
 }
 
 fn update_player_pos(
     diagnostics: Res<DiagnosticsStore>,
     cam_query: Query<&Transform, With<Camera3d>>,
-    mut text_query: Query<&mut Text, With<PlayerPosTex>>,
+    mut text_query: Query<&mut Text2d, With<PlayerPosTex>>,
 ) {
     if let Ok(cam_transform) = cam_query.single() {
         let fps = diagnostics

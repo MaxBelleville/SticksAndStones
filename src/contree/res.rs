@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::{Hash, Hasher}};
+use std::hash::{Hash, Hasher};
 
 use bevy::math::IVec3;
 use twox_hash::XxHash64;
@@ -6,7 +6,7 @@ use twox_hash::XxHash64;
 use super::shared;
 
 pub const NOT_A_LEAF_FLAG: u32 = 1 << 31;
-pub const MATERIAL_MASK: u32 = 0xFF; // Lower 8 bits
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct SvtGpuNode {
     pub child_mask: u64,      // 64 bits = one per child(or leaf in array) (4x4x4)

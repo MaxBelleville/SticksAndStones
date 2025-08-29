@@ -88,12 +88,6 @@ impl Contree {
         return None;
     }
 
-    pub fn get_full_storage(&self, size: usize) -> Vec<node::ContreeNode> {
-        let total = shared::maths::total_nodes(size);
-        vec![node::ContreeNode::default();total]
-    }
-
-
     pub fn print_root(&self) {
         //Can only print after build.
         if self.root_hash!=0 {
@@ -114,6 +108,11 @@ impl Contree {
     pub fn add_chunk(&mut self, chunk_coord: IVec3, chunk_data: chunk::ContreeChunk) {
         self.chunks.insert(chunk_coord,chunk_data);
     }
+
+    pub fn has_chunk(&self, chunk_coord: IVec3)->bool {
+        self.chunks.contains_key(&chunk_coord)
+    }
+ 
  
     //-------------------------------- ADD AND REMOVE ----------------------------------------//
     pub fn build_voxels(&mut self, mut voxel: shared::res::VoxelVec) {

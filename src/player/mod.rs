@@ -4,14 +4,14 @@ use super::shared;
 // Since it's possible to have multiple `Actions` components, you need
 // to define a marker and derive `InputContext` trait.
 #[derive(InputContext)]
-pub struct FlyCam;
+pub struct PlayerCam;
 
-pub struct FlycamPlugin;
+pub struct PlayerPlugin;
 
-impl Plugin for FlycamPlugin {
+impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<FlycamSettings>();
-        app.add_input_context::<FlyCam>();
+        app.init_resource::<PlayerMovementSettings>();
+        app.add_input_context::<PlayerCam>();
         app.add_observer(bind_actions); // Bind the actions to the input context
         app.add_observer(apply_movement);
         app.add_observer(apply_rotate);
@@ -19,9 +19,9 @@ impl Plugin for FlycamPlugin {
 }
 
 fn bind_actions(
-    trigger: Trigger<Bind<FlyCam>>,
-    mut players: Query<&mut Actions<FlyCam>>,
-    settings: Res<FlycamSettings>,
+    trigger: Trigger<Bind<PlayerCam>>,
+    mut players: Query<&mut Actions<PlayerCam>>,
+    settings: Res<PlayerMovementSettings>,
 ) {
     let mut actions = players.get_mut(trigger.target()).unwrap();
     actions
@@ -44,7 +44,7 @@ fn bind_actions(
 }
 
 fn apply_rotate(trigger: Trigger<Fired<Rotate>>, mut players: Query<&mut Transform>, state: Res<State<shared::GameState>>) {
-    if state.get() == &shared::GameState::Paused {
+    if state.get() != &shared::GameState::InGame {
         return;
     }
     let mut transform = players.get_mut(trigger.target()).unwrap();
@@ -59,16 +59,15 @@ fn apply_rotate(trigger: Trigger<Fired<Rotate>>, mut players: Query<&mut Transfo
 
 fn apply_movement(
     trigger: Trigger<Fired<Move>>,
-    flycam_act: Single<&Actions<FlyCam>>,
+    flycam_act: Single<&Actions<PlayerCam>>,
     mut transforms: Query<&mut Transform>,
     time: Res<Time>,
     state: Res<State<shared::GameState>>,
-    mut settings: ResMut<FlycamSettings>,
+    mut settings: ResMut<PlayerMovementSettings>,
 ) {
-    if state.get() == &shared::GameState::Paused {
+    if state.get() != &shared::GameState::InGame {
         return;
     }
-
     let actions = flycam_act.into_inner();
     let mut transform = transforms.get_mut(trigger.target()).unwrap();
 
@@ -132,7 +131,7 @@ struct Rotate;
 struct Sprint;
 
 #[derive(Resource)]
-pub struct FlycamSettings {
+pub struct PlayerMovementSettings {
     pub accel: f32,
     pub sprint_accel: f32,
     pub max_speed: f32,
@@ -142,7 +141,7 @@ pub struct FlycamSettings {
     pub velocity: Vec3,
 }
 
-impl Default for FlycamSettings {
+impl Default for PlayerMovementSettings {
     fn default() -> Self {
         Self {
             accel: 1.1,

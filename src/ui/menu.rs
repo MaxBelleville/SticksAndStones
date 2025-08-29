@@ -1,153 +1,177 @@
-use bevy::color::palettes::css::CRIMSON;
 use bevy::prelude::*;
+use bevy_lunex::prelude::*;
 
-use super::ButtonColors;
-use super::MenuButtonAction;
-use super::MenuState;
-use super::TEXT_COLOR;
+
 use super::shared;
+use super::{UICanvas,MenuState,PauseBackground,SettingsBackground};
 
 #[derive(Component)]
-struct OnMainMenuScreen;
+struct MainMenu;
+
+
 
 pub struct MenuPlugin;
-// This plugin manages the menu, with 3 different screens:
-// - a main menu with "New Game", "Settings", "Quit"
-// - a settings menu with two submenus and a back button(handled in Settings plugin)
-// - two settings screen with a setting that can be set and a back button(handled in Settings plugin)
+
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<MenuState>()
-            .add_systems(OnEnter(shared::GameState::InMenu), menu_setup)
-            .add_systems(OnEnter(shared::GameState::Paused), menu_setup)
-            .add_systems(OnEnter(MenuState::Main), main_menu_setup)
-            .add_systems(
-                OnExit(MenuState::Main),
-                shared::despawn::<OnMainMenuScreen>,
-            );
+            .add_systems(OnEnter(MenuState::Main), (shared::despawn::<SettingsBackground>,main_menu_setup))
+            .add_systems(OnExit(MenuState::Main), (shared::despawn::<MainMenu>,shared::despawn::<PauseBackground>));
     }
 }
 
-fn menu_setup(mut menu_state: ResMut<NextState<MenuState>>) {
-    menu_state.set(MenuState::Main);
-}
 
 fn main_menu_setup(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
     game_state: Res<State<shared::GameState>>,
+    asset_server: Res<AssetServer>,
+    container_query: Query<Entity, With<UICanvas>>,
 ) {
-    // Common style for all buttons on the screen
-    let button_node = Node {
-        width: Val::Px(300.0),
-        height: Val::Px(65.0),
-        margin: UiRect::all(Val::Px(20.0)),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        ..default()
-    };
-    let button_icon_node = Node {
-        width: Val::Px(30.0),
-        // This takes the icons out of the flexbox flow, to be positioned exactly
-        position_type: PositionType::Absolute,
-        // The icon will be close to the left border of the button
-        left: Val::Px(10.0),
-        ..default()
-    };
-    let button_text_font = TextFont {
-        font_size: 33.0,
-        ..default()
+
+    let buttons = if game_state.get() == &shared::GameState::Paused {
+        Vec::from([
+            "Continue",
+            "Load Game",
+            "Save Game",
+            "Settings",
+            "Quit Game",
+        ])
+    }
+    else {
+        Vec::from([
+            "New Game",
+            "Load Game",
+            "Settings",
+            "Credits",
+            "Quit Game"
+        ])
     };
 
-    let right_icon = asset_server.load("images/right.png");
-    let wrench_icon = asset_server.load("images/wrench.png");
-    let exit_icon = asset_server.load("images/exitRight.png");
-    let label = if game_state.get() == &shared::GameState::Paused {
-        "Continue"
-    } else {
-        "New Game"
-    };
+   if let Ok(container) = container_query.single() {
 
-    commands.spawn((
-        Node {
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75).into()),
-        OnMainMenuScreen,
-        children![(
-            Node {
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderRadius::all(Val::Px(10.0)),
-            BackgroundColor(CRIMSON.into()),
-            children![
-                // Display the game name
-                (
-                    Text::new("Sticks & Stones"),
-                    TextFont {
-                        font_size: 67.0,
-                        ..default()
-                    },
-                    TextColor(TEXT_COLOR),
-                    Node {
-                        margin: UiRect::all(Val::Px(50.0)),
-                        ..default()
-                    },
-                ),
-                // Display three buttons for each action available from the main menu:
-                // - new game
-                // - settings
-                // - quit
-                (
-                    Button,
-                    button_node.clone(),
-                    BorderRadius::all(Val::Px(10.0)),
-                    BackgroundColor(ButtonColors::NORMAL),
-                    MenuButtonAction::Play,
-                    children![
-                        (ImageNode::new(right_icon), button_icon_node.clone()),
-                        (
-                            Text::new(label),
-                            button_text_font.clone(),
-                            TextColor(TEXT_COLOR),
-                        ),
-                    ]
-                ),
-                (
-                    Button,
-                    BorderRadius::all(Val::Px(10.0)),
-                    button_node.clone(),
-                    BackgroundColor(ButtonColors::NORMAL),
-                    MenuButtonAction::Settings,
-                    children![
-                        (ImageNode::new(wrench_icon), button_icon_node.clone()),
-                        (
-                            Text::new("Settings"),
-                            button_text_font.clone(),
-                            TextColor(TEXT_COLOR),
-                        ),
-                    ]
-                ),
-                (
-                    Button,
-                    BorderRadius::all(Val::Px(10.0)),
-                    button_node,
-                    BackgroundColor(ButtonColors::NORMAL),
-                    MenuButtonAction::Quit,
-                    children![
-                        (ImageNode::new(exit_icon), button_icon_node),
-                        (Text::new("Quit"), button_text_font, TextColor(TEXT_COLOR),),
-                    ]
-                ),
-            ]
-        )],
-    ));
+        commands.entity(container).with_children(|ui| {
+
+                if game_state.get() == &shared::GameState::Paused {
+                    ui.spawn((
+                        PauseBackground,
+                        // You can name your entites for easier debug
+                        Name::new("Background"),
+                        UiLayout::solid()
+                            .size((640.0, 360.0))
+                            .scaling(Scaling::Fill)
+                            .pack(),
+                        Sprite::from_image(asset_server.load("images/menu/pause_bg.png")),
+                        
+                    ));
+                }
+
+                ui.spawn((
+                    MainMenu,
+                    UiLayout::solid().size((881.0, 1600.0)).align_x(-0.90).pack(),
+                )).with_children(|ui| {
+            
+
+                //Logo 
+                ui.spawn((
+                    Name::new("Logo"),
+                    UiLayout::solid().size((260.0, 33.0)).align_y(-0.85).pack(),
+                    Sprite::from_image(asset_server.load("images/menu/title.png")),
+                ));
+
+                // Spawn buttons
+                let gap = 32.0;
+                let size = 52.0;
+                let mut offset = 192.0;
+                for button in buttons {
+                    // Spawn the button
+                    let mut button_entity = ui.spawn((
+                        Name::new(button),
+                        UiLayout::window()
+                            .pos((0.0,offset))
+                            .size((300.0,size))
+                            .pack(),
+                        Visibility::Visible,
+                        OnHoverSetCursor::new(bevy::window::SystemCursorIcon::Pointer),
+                    ));
+                    button_entity.with_children(|ui| {
+                        // Spawn the image
+                        ui.spawn((
+                            // You can define layouts for multiple states
+                            UiLayout::new(vec![
+                                (UiBase::id(), UiLayout::window().full()),
+                                (UiHover::id(), UiLayout::window().x(Rl(10.0)).full()),
+                            ]),
+                            // Like this you can enable a state
+                            UiHover::new().forward_speed(8.0).backward_speed(10.0),
+                        // You can specify colors for multiple states
+                            Sprite {
+                                image: asset_server.load("images/menu/button.png"),
+                                ..default()
+                            },
+                            // Make sure it does not cover the bounding zone of parent
+                            Pickable::IGNORE,
+                        ))
+                        .with_children(|ui| {
+                            // Spawn the text
+                            ui.spawn((
+                                // For text always use window layout to position it
+                                UiLayout::window()
+                                    .pos((Rh(40.0), Rl(50.0)))
+                                    .anchor(Anchor::CenterLeft)
+                                    .pack(),
+                                UiColor::new(vec![
+                                    (UiBase::id(), Color::srgba(246.0/255.0, 214.0/255.0, 189.0/255.0,1.0)),
+                                    (UiHover::id(), Color::WHITE),
+                                ]),
+                            UiHover::new().forward_speed(8.0).backward_speed(10.0),
+                                // You can control the size of the text
+                                UiTextSize::from(Rh(72.0)),
+                                // You can attach text like this
+                                Text2d::new(button.to_ascii_uppercase()),
+                                TextFont {
+                                    font: asset_server.load("fonts/monogram.ttf"),
+                                    font_size: 72.0,
+                                    ..default()
+                                },
+                                // Make sure it does not cover the bounding zone of parent
+                                Pickable::IGNORE,
+                            ));
+                        });
+                    }).observe(hover_set::<Pointer<Over>, true>).observe(hover_set::<Pointer<Out>, false>);
+
+                    match button {
+                            "New Game" => {
+                                button_entity.observe(|_: Trigger<Pointer<Click>>, mut next: ResMut<NextState<shared::GameState>>, 
+                                    mut menu_next: ResMut<NextState<MenuState>>| {
+                                    // Change the state to settings
+                                    next.set(shared::GameState::StartGame);
+                                    menu_next.set(MenuState::Disabled);
+                                });
+                            },
+                            "Settings" => {
+                                button_entity.observe(|_: Trigger<Pointer<Click>>, mut next: ResMut<NextState<MenuState>>| {
+                                    // Change the state to settings
+                                    next.set(MenuState::Settings);
+                                });
+                            },
+                            "Quit Game" => {
+                                button_entity.observe(|_: Trigger<Pointer<Click>>, mut exit: EventWriter<AppExit>| {
+                                    // Close the app
+                                    exit.write(AppExit::Success);
+                                });
+                            },
+                            _ => {
+                                button_entity.observe(|c_trigger: Trigger<Pointer<Click>>, c_button: Query<NameOrEntity, With<UiLayout>>| {
+                                    info!("Clicked: {}", c_button.get(c_trigger.target()).unwrap());
+                                });
+                            }
+                            }
+
+
+                    offset += gap + size;
+                }
+            });
+                
+        });
+    }
 }
-
-

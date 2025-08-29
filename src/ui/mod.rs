@@ -1,11 +1,12 @@
-use bevy::{app::PluginGroupBuilder, prelude::*};
+use bevy::{app::PluginGroupBuilder, prelude::*, render::view::RenderLayers};
+use bevy_lunex::prelude::*;
+
+mod load;
 mod menu;
 mod player;
 mod settings;
 mod splash;
 
-use super::DisplayQuality;
-use super::Volume;
 use super::shared;
 
 // State used for the current menu screen
@@ -18,33 +19,17 @@ enum MenuState {
     #[default]
     Disabled,
 }
-
-// Tag component used to mark which setting is currently selected
 #[derive(Component)]
-struct SelectedOption;
+pub struct UICanvas;
 
-// All actions that can be triggered from a button click
 #[derive(Component)]
-enum MenuButtonAction {
-    Play,
-    Settings,
-    SettingsDisplay,
-    SettingsSound,
-    BackToMainMenu,
-    BackToSettings,
-    Quit,
-}
+pub struct Background;
 
-const TEXT_COLOR: Color = Color::srgb(0.9, 0.9, 0.9);
+#[derive(Component)]
+pub struct PauseBackground;
 
-pub struct ButtonColors;
-
-impl ButtonColors {
-    pub const NORMAL: Color = Color::srgb(0.15, 0.15, 0.15);
-    pub const HOVER: Color = Color::srgb(0.25, 0.25, 0.25);
-    pub const HOVER_PRESSED: Color = Color::srgb(0.25, 0.65, 0.25);
-    pub const PRESSED: Color = Color::srgb(0.35, 0.75, 0.35);
-}
+#[derive(Component)]
+pub struct SettingsBackground;
 
 //Setup plugin group and menu resources
 pub struct UIPlugins;
@@ -55,8 +40,9 @@ impl PluginGroup for UIPlugins {
             .add(UIPlugin)
             .add(splash::SplashPlugin)
             .add(menu::MenuPlugin)
+            .add(load::LoadPlugin)
             .add(settings::SettingsPlugin)
-            .add( player::PlayerUIPlugin)
+            .add(player::PlayerUIPlugin)
     }
 }
 
@@ -67,102 +53,96 @@ impl Plugin for UIPlugin {
         app.add_systems(Startup, setup)
             .add_systems(
                 Update,
-                (menu_action, button_system).run_if(
-                    in_state(shared::GameState::InMenu).or(in_state(shared::GameState::Paused)),
-                ),
-            )
-             .add_systems(
-                Update,
-                (pause_on_escape).run_if(
-                    in_state(shared::GameState::InGame).or(in_state(shared::GameState::Paused)),
+                (on_escape).run_if(
+                    in_state(shared::GameState::InGame)
+                        .or(in_state(shared::GameState::Paused))
+                        .or(in_state(shared::GameState::InMenu)),
                 ),
             )
             .add_systems(
-                OnExit(shared::GameState::InMenu),
-                shared::despawn::<Camera2d>
-                    .run_if(not(resource_exists::<shared::res::IsGamePrepared>)),
+                OnExit(shared::GameState::StartGame),
+                shared::despawn::<Background>,
             );
     }
 }
 
-fn setup(mut commands: Commands) {
-    commands.spawn((Camera2d,));
-}
-
-// This system handles changing all buttons color based on mouse interaction
-fn button_system(
-    mut interaction_query: Query<
-        (&Interaction, &mut BackgroundColor, Option<&SelectedOption>),
-        (Changed<Interaction>, With<Button>),
-    >,
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    world: Res<shared::res::WorldData>,
+    mut game_state: ResMut<NextState<shared::GameState>>,
 ) {
-    for (interaction, mut background_color, selected) in &mut interaction_query {
-        *background_color = match (*interaction, selected) {
-            (Interaction::Pressed, _) | (Interaction::None, Some(_)) => {
-                ButtonColors::PRESSED.into()
-            }
-            (Interaction::Hovered, Some(_)) => ButtonColors::HOVER_PRESSED.into(),
-            (Interaction::Hovered, None) => ButtonColors::HOVER.into(),
-            (Interaction::None, None) => ButtonColors::NORMAL.into(),
-        }
-    }
+    commands.spawn((
+        // This camera will become the source for all UI paired to index 0.
+        Camera2d,
+        UiSourceCamera::<0>,
+        // Ui nodes start at 0 and move + on the Z axis with each depth layer.
+        // This will ensure you will see up to 1000 nested children.
+        Transform::from_translation(Vec3::Z * 1000.0),
+        RenderLayers::from_layers(&[0, 1]),
+    ));
+
+    commands
+        .spawn((
+            Name::new("Canvas Comp"),
+            UiLayoutRoot::new_2d(),
+            UICanvas,
+            UiFetchFromCamera::<0>,
+        ))
+        .with_children(|ui| {
+            ui.spawn((
+                Name::new("Canvas"),
+                UiLayout::solid()
+                    .size((16.0, 9.0))
+                    .scaling(Scaling::Fit)
+                    .pack(),
+                Sprite::from_image(world.image.clone()),
+                UiEmbedding,
+                RenderLayers::from_layers(&[0, 1]),
+            ));
+
+            ui.spawn((
+                Background,
+                // You can name your entites for easier debug
+                Name::new("Background"),
+                UiLayout::solid()
+                    .size((640.0, 360.0))
+                    .scaling(Scaling::Fill)
+                    .pack(),
+                Sprite::from_image(asset_server.load("images/menu/main_bg.png")),
+            ));
+        });
+
+    game_state.set(shared::GameState::Splash);
 }
 
-fn menu_action(
-    interaction_query: Query<
-        (&Interaction, &MenuButtonAction),
-        (Changed<Interaction>, With<Button>),
-    >,
-    mut app_exit_events: EventWriter<AppExit>,
+fn on_escape(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    curr_game_state: Res<State<shared::GameState>>,
+    curr_menu_state: Res<State<MenuState>>,
+    mut game_state: ResMut<NextState<shared::GameState>>,
     mut menu_state: ResMut<NextState<MenuState>>,
-    curr_game_state: Res<State<shared::GameState>>,
-    mut game_state: ResMut<NextState<shared::GameState>>,
 ) {
-    let state = if curr_game_state.get() == &shared::GameState::Paused {
-        shared::GameState::InGame
-    } else {
-        shared::GameState::InGame
-    };
-
-    for (interaction, menu_button_action) in &interaction_query {
-        if *interaction == Interaction::Pressed {
-            match menu_button_action {
-                MenuButtonAction::Quit => {
-                    app_exit_events.write(AppExit::Success);
-                }
-                MenuButtonAction::Play => {
-                    game_state.set(state);
-                    menu_state.set(MenuState::Disabled);
-                }
-                MenuButtonAction::Settings => menu_state.set(MenuState::Settings),
-                MenuButtonAction::SettingsDisplay => {
-                    menu_state.set(MenuState::SettingsDisplay);
-                }
-                MenuButtonAction::SettingsSound => {
-                    menu_state.set(MenuState::SettingsSound);
-                }
-                MenuButtonAction::BackToMainMenu => menu_state.set(MenuState::Main),
-                MenuButtonAction::BackToSettings => {
-                    menu_state.set(MenuState::Settings);
-                }
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        //If in some other menu go to the main screen
+        let (change_game, change_menu) = if curr_menu_state.get() != &MenuState::Main {
+            //Check if paused or main menu.
+            if curr_game_state.get() == &shared::GameState::InMenu {
+                (shared::GameState::InMenu, MenuState::Main)
+            } else {
+                (shared::GameState::Paused, MenuState::Main)
             }
         }
-    }
-}
+        //Otherwise switch from ingame to paused
+        else {
+            if curr_game_state.get() == &shared::GameState::Paused {
+                (shared::GameState::InGame, MenuState::Disabled)
+            } else {
+                (shared::GameState::Paused, MenuState::Main)
+            }
+        };
 
-fn pause_on_escape(keyboard_input: Res<ButtonInput<KeyCode>>, 
-    curr_game_state: Res<State<shared::GameState>>,
-    mut game_state: ResMut<NextState<shared::GameState>>,
-    mut menu_state: ResMut<NextState<MenuState>>) {
-    let (change_game,change_menu) = if curr_game_state.get() == &shared::GameState::Paused {
-        (shared::GameState::InGame,MenuState::Disabled)
-    } else {
-        (shared::GameState::Paused,MenuState::Main)
-    };
-    
-
-    if keyboard_input.just_pressed(KeyCode::Escape) {
-         game_state.set(change_game);
-         menu_state.set(change_menu);
+        game_state.set(change_game);
+        menu_state.set(change_menu);
     }
 }

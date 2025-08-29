@@ -1,11 +1,15 @@
 
 
-use bevy::{prelude::*, render::extract_resource::ExtractResource, window::{PresentMode, WindowMode}};
+use bevy::{platform::collections::HashSet, prelude::*, render::{extract_component::ExtractComponent, extract_resource::ExtractResource}, window::{PresentMode, WindowMode}};
+use noiz::prelude::*;
 
 
 use crate::shared;
 
 use super::{maths,contree,GameState};
+
+
+
 
 
 #[derive(Resource, Debug, Clone,ExtractResource)]
@@ -31,29 +35,28 @@ impl Default for WindowManagerSettings {
     }
 }
 
-//Marker to ensure first setup of world
-#[derive(Resource)]
-pub struct IsGamePrepared;
-
-
 #[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Hash,ExtractResource)]
 pub struct ExtractedGameState(pub GameState);
 
 #[derive(Resource,Default,Clone,ExtractResource)]
-pub struct WorldBuilderResource {
-    pub noise_seed: Vec3,
+pub struct WorldData {
     pub contree: contree::Contree,
+    pub seed: Option<u32>,
+    pub proccessing_chunks: HashSet<IVec3>,
+    pub noise: Noise<common_noise::Fbm<MixCellGradients<OrthoGrid, Smoothstep, QuickGradients>>>,
     pub gpu_data: Vec<i32>,
     pub file_data: Vec<u8>,
-}
-
-#[derive(Resource, Clone, ExtractResource, Default)]
-pub struct SVTPushConsts { //Theoretically should be moved to the contree and renamed and loaded like window_manager.
     pub root_size: f32,
     pub root_min: Vec3,
+    pub image: Handle<Image>,
 }
+
+#[derive(Component, Clone, ExtractComponent)]
+#[extract_component_filter(With<Camera>)]
+pub struct ComputeCamera;
+
 #[derive(Resource, Clone, Copy,ExtractResource,Default)]
-pub struct AtmosphereUniformData {
+pub struct AtmosphereData {
     pub sun_dir: Vec3,
     pub time: f32,
 }
@@ -93,6 +96,7 @@ impl VoxelVec {
         self.update_morton();
         return chunk_coord;
     }
+
     pub fn normalize(&mut self, size: i32) {
         self.pos+= IVec3::splat(size/ 2);
         self.update_morton();

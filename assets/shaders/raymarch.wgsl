@@ -21,10 +21,11 @@ const MAX_STEPS: u32 = 1024u;
 const EPSILON: f32 = 1e-5;
 const MAX_DIST: f32 = 2000.0;
 
-@group(0) @binding(0) var input: texture_storage_2d<rgba8unorm, read>;
-@group(0) @binding(1) var output: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(0) var albedo: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(1) var normal: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(2) var ray_depth: texture_storage_2d<r32float, write>;
 
-@group(1) @binding(0) var depth_tex: texture_depth_2d;
+@group(1) @binding(0) var bevy_depth_tex: texture_depth_2d;
 @group(1) @binding(1) var<uniform> env_data: EnviromentData;
 @group(1) @binding(2) var<storage, read> svt_data: array<i32>;
 @group(1) @binding(3) var<uniform> push: PushConstants;
@@ -42,13 +43,14 @@ struct Hit {
     t: f32        // ray distance (important for ordering / depth buffer)
 };
 
+
 // Optionally, keep the raw samples that caused the crossing
-struct Crossing {
-    p0: vec3<f32>, // world-space point before crossing
-    p1: vec3<f32>, // world-space point after crossing
-    f0: f32,       // occupancy(p0) value
-    f1: f32,       // occupancy(p1) value
-}
+// struct Crossing {
+//    p0: vec3<f32>, // world-space point before crossing
+//    p1: vec3<f32>, // world-space point after crossing
+//    f0: f32,       // occupancy(p0) value
+//    f1: f32,       // occupancy(p1) value
+//}
 
 fn load_gpu_node(index: u32) -> GpuNode {
     let base = index * 4u;
@@ -320,5 +322,5 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         color = base_color * (ambient + lambert);
     }
 
-    textureStore(output, vec2<i32>(id.xy), vec4<f32>(color, alpha));
+    textureStore(albedo, vec2<i32>(id.xy), vec4<f32>(color, alpha));
 }
