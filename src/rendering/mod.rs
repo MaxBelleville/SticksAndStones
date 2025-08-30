@@ -19,12 +19,14 @@ use bevy::{
         view::{ExtractedView, ViewDepthTexture},
     },
 };
-mod lighting;
-mod prefill_depth;
-mod raster;
-mod raymarch;
 mod res;
 mod utils;
+mod raymarch;
+mod prefill_depth;
+mod raster; // So you can use draw raster
+mod lighting;
+mod blit;
+
 
 pub struct RenderSystemPlugin;
 
@@ -37,7 +39,6 @@ impl Plugin for RenderSystemPlugin {
             ExtractResourcePlugin::<shared::res::AtmosphereData>::default(),
             ExtractResourcePlugin::<shared::res::ExtractedGameState>::default(),
             ExtractResourcePlugin::<shared::res::WorldData>::default(),
-            ExtractComponentPlugin::<raster::DrawRaster>::default(),
             SortedRenderPhasePlugin::<raster::RasterMainPass, MeshPipeline>::new(
                 RenderDebugFlags::default(),
             ),
@@ -50,6 +51,7 @@ impl Plugin for RenderSystemPlugin {
         render_app
             .init_resource::<res::RenderBindGroups>()
             .init_resource::<res::GBufferTargets>()
+            .init_resource::<blit::BlitRuntime>()
             .init_resource::<SpecializedMeshPipelines<raster::pipe::RasterPipeline>>()
             .init_resource::<DrawFunctions<raster::RasterMainPass>>()
             .add_render_command::<raster::RasterMainPass, raster::DrawMesh3dRaster>()
@@ -71,9 +73,11 @@ impl Plugin for RenderSystemPlugin {
                     raymarch::prepare_bind_group
                         .after(prepare_shared_bind_group)
                         .after(prepare_gbuffer),
+
                     prefill_depth::prepare_bind_group
                         .after(prepare_shared_bind_group)
                         .after(prepare_gbuffer),
+                 
                     lighting::prepare_bind_group
                         .after(prepare_shared_bind_group)
                         .after(prepare_gbuffer),
@@ -81,13 +85,14 @@ impl Plugin for RenderSystemPlugin {
                     .in_set(RenderSet::PrepareBindGroups)
                     .run_if(in_extracted_game_state),
                 (
-                    raster::queue_meshes.in_set(RenderSet::QueueMeshes),
-                    sort_phase_system::<raster::RasterMainPass>.in_set(RenderSet::PhaseSort),
+                    raster::queue_meshes.in_set(RenderSet::QueueMeshes).run_if(in_extracted_game_state),
+                    sort_phase_system::<raster::RasterMainPass>.in_set(RenderSet::PhaseSort) ,
                     batch_and_prepare_sorted_render_phase::<
                         raster::RasterMainPass,
                         raster::pipe::RasterPipeline,
                     >
                         .in_set(RenderSet::PrepareResources),
+                    blit::prepare_blit_pipeline.in_set(RenderSet::PrepareResources),
                 ),
             ),
         );
@@ -112,7 +117,8 @@ impl Plugin for RenderSystemPlugin {
             .add_render_graph_node::<ViewNodeRunner<lighting::LightingNode>>(
                 Core3d,
                 lighting::LightingRenderLabel,
-            );
+            )
+            .add_render_graph_node::<ViewNodeRunner<blit::BlitNode>>(Core3d, blit::BlitRenderLabel);
 
         // Hook ordering into core_3d graph.
         // The tuple below automatically creates the edges so the nodes execute in the desired order.
@@ -124,12 +130,14 @@ impl Plugin for RenderSystemPlugin {
                 Node3d::EndPrepasses,
                 raymarch::RaymarchRenderLabel,
                 prefill_depth::PrefillDepthRenderLabel,
-                raster::RasterRenderLabel,
                 Node3d::EndMainPass,
+                raster::RasterRenderLabel,
                 lighting::LightingRenderLabel,
+                blit::BlitRenderLabel,
                 Node3d::Tonemapping,
             ),
         );
+ 
     }
 
     fn finish(&self, app: &mut App) {
@@ -210,11 +218,25 @@ fn prepare_gbuffer(
         mip_level_count: 1,
     };
 
+    let output_desc = TextureDescriptor {
+        label: Some("RenderOutTexture"),
+        size,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format: TextureFormat::Rgba8Unorm,
+        usage: TextureUsages::RENDER_ATTACHMENT
+            | TextureUsages::STORAGE_BINDING
+            | TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+        mip_level_count: 1,
+    };
+
     // Grab textures from cache (reused or freshly allocated)
     targets.albedo = Some(texture_cache.get(&render_device, albedo_desc));
     targets.normal = Some(texture_cache.get(&render_device, normal_desc));
     targets.ray_depth = Some(texture_cache.get(&render_device, ray_depth_desc));
     targets.depth_attach = Some(texture_cache.get(&render_device, depth_attach_desc));
+    targets.final_out = Some(texture_cache.get(&render_device, output_desc));
 }
 
 fn prepare_shared_bind_group(
@@ -253,7 +275,6 @@ fn prepare_shared_bind_group(
             contents: bytemuck::cast_slice(&world.gpu_data),
             usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
         });
-
         //Loads depth, camera, "push consts" and svt buffer data.
         let bind_group_shared = render_device.create_bind_group(
             "shared_bind",
@@ -265,6 +286,7 @@ fn prepare_shared_bind_group(
                 push_constants.as_entire_binding(),
             )),
         );
+      
         bind_groups.shared = Some(bind_group_shared);
     } else {
         panic!("View not found");

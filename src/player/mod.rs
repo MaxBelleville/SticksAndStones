@@ -68,9 +68,9 @@ fn apply_movement(
     if state.get() != &shared::GameState::InGame {
         return;
     }
+
     let actions = flycam_act.into_inner();
     let mut transform = transforms.get_mut(trigger.target()).unwrap();
-
     // Move to the camera direction.
     let rotation = transform.rotation;
 

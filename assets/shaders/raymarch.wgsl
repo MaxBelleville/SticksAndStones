@@ -240,9 +240,9 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
 
         // advance to exit point of this voxel
         if (tin.x > tin.y) {
-            t = t + 0.0031;
+            t = t + 0.003;
         } else {
-            t = tin.y + 0.0031;
+            t = tin.y + 0.003;
         }
         if (t >= MAX_DIST) { break; }
         
@@ -305,7 +305,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let hit = raymarch_svt(ray_org, dir_camera);
 
     var alpha = 0.0;
-    var color = vec3<f32>(0.0);
+    var color = vec3<f32>(1.0);
 
    if (hit.is_hit) {
         alpha = 1.0;
@@ -320,7 +320,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let ambient = 0.2;
  
         color = base_color * (ambient + lambert);
+        textureStore(normal, vec2<i32>(id.xy), vec4<f32>(hit.normal, alpha));
+        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(hit.t));
     }
 
     textureStore(albedo, vec2<i32>(id.xy), vec4<f32>(color, alpha));
+    textureStore(normal, vec2<i32>(id.xy), vec4<f32>(0.0));
+    textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(MAX_DIST));
+   
 }

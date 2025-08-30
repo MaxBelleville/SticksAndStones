@@ -3,14 +3,20 @@ use std::borrow::Cow;
 use bevy::{
     prelude::*,
     render::{
-        render_resource::*,
-        renderer::{RenderContext, RenderDevice},
+        mesh::VertexBufferLayout,
+        render_resource::{
+            BindGroup, BindGroupLayout, CachedComputePipelineId, ColorTargetState, CompareFunction,
+            ComputePassDescriptor, ComputePipelineDescriptor, DepthBiasState, DepthStencilState,
+            FragmentState, MultisampleState, PipelineCache, PrimitiveState,
+            RenderPipelineDescriptor, ShaderType, StencilState, TextureFormat, VertexState,
+        },
+        renderer::RenderContext,
     },
     window::WindowMode,
 };
 use bytemuck::{Pod, Zeroable};
 
-use super::{res, shared};
+use super::shared;
 pub fn compute_pipeline_descriptor(
     shader: Handle<Shader>,
     entry_point: &str,
@@ -27,7 +33,7 @@ pub fn compute_pipeline_descriptor(
     }
 }
 
-pub fn render_pipeline_descriptor_empty(
+pub fn render_pipeline_descriptor_depth(
     shader: Handle<Shader>,
     frag_entry: &str,
     vert_entry: &str,
@@ -39,7 +45,13 @@ pub fn render_pipeline_descriptor_empty(
         vert_entry,
         vec![],
         vec![],
-        CompareFunction::Always,
+        Some(DepthStencilState {
+            format: TextureFormat::Depth32Float,
+            depth_write_enabled: true,
+            depth_compare: CompareFunction::Always,
+            stencil: StencilState::default(),
+            bias: DepthBiasState::default(),
+        }),
         bind_group_layouts,
     )
 }
@@ -50,7 +62,7 @@ pub fn render_pipeline_descriptor(
     vert_entry: &str,
     frag_targets: Vec<Option<ColorTargetState>>,
     buffers: Vec<VertexBufferLayout>,
-    depth_compare: CompareFunction,
+    depth_stencil: Option<DepthStencilState>,
     bind_group_layouts: &Vec<BindGroupLayout>,
 ) -> RenderPipelineDescriptor {
     RenderPipelineDescriptor {
@@ -71,13 +83,7 @@ pub fn render_pipeline_descriptor(
             shader_defs: vec![], // no color, only depth
         }),
         primitive: PrimitiveState::default(),
-        depth_stencil: Some(DepthStencilState {
-            format: TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare,
-            stencil: StencilState::default(),
-            bias: DepthBiasState::default(),
-        }),
+        depth_stencil,
         multisample: MultisampleState::default(),
         push_constant_ranges: vec![],
         zero_initialize_workgroup_memory: true,
@@ -105,23 +111,6 @@ pub fn run_compute_pass(
         settings.dim.w as u32 / settings.workgroup_size,
         1,
     );
-}
-
-pub fn create_bind_group(
-    label: &str,
-    render_device: &RenderDevice,
-    layout: &BindGroupLayout,
-    targets: &res::GBufferTargets,
-) -> BindGroup {
-    render_device.create_bind_group(
-        label,
-        layout,
-        &BindGroupEntries::sequential((
-            &targets.albedo.as_ref().unwrap().default_view,
-            &targets.normal.as_ref().unwrap().default_view,
-            &targets.ray_depth.as_ref().unwrap().default_view,
-        )),
-    )
 }
 
 #[repr(C)]

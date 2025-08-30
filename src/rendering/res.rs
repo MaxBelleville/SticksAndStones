@@ -11,6 +11,7 @@ pub struct GBufferTargets {
     pub normal: Option<CachedTexture>,
     pub ray_depth: Option<CachedTexture>,
     pub depth_attach: Option<CachedTexture>,
+    pub final_out: Option<CachedTexture>,
 }
 
 #[derive(Resource, Default)]
@@ -35,9 +36,22 @@ impl FromWorld for GBufferLayout {
             &BindGroupLayoutEntries::sequential(
                 ShaderStages::COMPUTE,
                 (
-                    binding_types::texture_2d(TextureSampleType::Float { filterable: false }), // albedo
-                    binding_types::texture_2d(TextureSampleType::Float { filterable: false }), // normal
-                    binding_types::texture_2d(TextureSampleType::Float { filterable: false }), // depth
+                        binding_types::texture_storage_2d(
+                        TextureFormat::Rgba8Unorm,
+                        StorageTextureAccess::ReadOnly,
+                    ),
+                    binding_types::texture_storage_2d(
+                        TextureFormat::Rgba16Float,
+                        StorageTextureAccess::ReadOnly,
+                    ),
+                    binding_types::texture_storage_2d(
+                        TextureFormat::R32Float,
+                        StorageTextureAccess::ReadOnly,
+                    ),
+                     binding_types::texture_storage_2d(
+                        TextureFormat::Rgba8Unorm,
+                        StorageTextureAccess::WriteOnly,
+                    ), // Final
                 ),
             ),
         );
@@ -61,7 +75,7 @@ impl FromWorld for GBufferLayout {
                 ),
             ),
         );
-  
+
         Self {
             read_layout,
             write_layout,

@@ -4,10 +4,9 @@ use bevy::{
     render::{
         render_graph::{self, RenderLabel, ViewNode},
         render_resource::{
-            BindGroupEntries, BindGroupLayoutEntries, CachedRenderPipelineId,
-            LoadOp, Operations, PipelineCache, RenderPassDepthStencilAttachment,
-            RenderPassDescriptor, ShaderStages, StoreOp, TextureSampleType,
-            binding_types::texture_2d,
+            BindGroupEntries, BindGroupLayoutEntries, CachedRenderPipelineId, LoadOp, Operations,
+            PipelineCache, RenderPassDepthStencilAttachment, RenderPassDescriptor, ShaderStages,
+            StoreOp, TextureSampleType, binding_types::texture_2d,
         },
         renderer::{RenderContext, RenderDevice},
         view::ViewTarget,
@@ -64,6 +63,7 @@ impl ViewNode for PrefillDepthNode {
         }
         pass.set_bind_group(0, current, &[]);
         pass.draw(0..3, 0..1); // fullscreen triangle
+
         Ok(())
     }
 }
@@ -110,7 +110,7 @@ impl FromWorld for PrefillDepthPipeline {
 
         let pipeline_cache = world.resource::<PipelineCache>();
         let prefill_pipeid =
-            pipeline_cache.queue_render_pipeline(utils::render_pipeline_descriptor_empty(
+            pipeline_cache.queue_render_pipeline(utils::render_pipeline_descriptor_depth(
                 shader,
                 "fs_main",
                 "vs_main",

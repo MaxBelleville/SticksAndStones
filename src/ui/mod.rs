@@ -90,13 +90,15 @@ fn setup(
             UiFetchFromCamera::<0>,
         ))
         .with_children(|ui| {
-            ui.spawn((
-                Name::new("Canvas"),
+      
+
+             ui.spawn((
+                Name::new("CanvasRender"),
                 UiLayout::solid()
                     .size((16.0, 9.0))
                     .scaling(Scaling::Fit)
                     .pack(),
-                Sprite::from_image(world.image.clone()),
+                Sprite::from_image(world.render.clone()),
                 UiEmbedding,
                 RenderLayers::from_layers(&[0, 1]),
             ));

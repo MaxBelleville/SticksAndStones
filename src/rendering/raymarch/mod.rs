@@ -1,11 +1,9 @@
-use super::{shared,res, utils};
+use super::{res, shared, utils};
 use bevy::{
     prelude::*,
     render::{
         render_graph::{self, RenderLabel, ViewNode},
-        render_resource::{
-            CachedComputePipelineId, PipelineCache,
-        },
+        render_resource::{BindGroupEntries, CachedComputePipelineId, PipelineCache},
         renderer::{RenderContext, RenderDevice},
         view::ViewTarget,
     },
@@ -40,25 +38,33 @@ impl ViewNode for RaymarchNode {
 
         utils::run_compute_pass(
             render_context,
-            vec![current,shared],
+            vec![current, shared],
             cache,
             world
                 .resource::<shared::res::WindowManagerSettings>()
                 .clone(),
             pipeline.ray_pipeid,
         );
-
         Ok(())
     }
 }
 
-pub fn prepare_bind_group(  
+pub fn prepare_bind_group(
     render_device: Res<RenderDevice>,
     gbf_layout: Res<res::GBufferLayout>,
     targets: Res<res::GBufferTargets>,
     mut render_bind_groups: ResMut<res::RenderBindGroups>,
 ) {
-    render_bind_groups.raymarch = Some(utils::create_bind_group("GBufferRaycast",&render_device,&gbf_layout.write_layout,targets.into_inner()));
+    render_bind_groups.raymarch = Some(render_device.create_bind_group(
+         "GBufferRaycast",
+        &gbf_layout.write_layout,
+        &BindGroupEntries::sequential((
+            &targets.albedo.as_ref().unwrap().default_view,
+            &targets.normal.as_ref().unwrap().default_view,
+            &targets.ray_depth.as_ref().unwrap().default_view,
+        )),
+    ));
+
 }
 
 #[derive(Resource)]
@@ -75,12 +81,12 @@ impl FromWorld for RaymarchPipeline {
         let bind_group_layouts = vec![gbf_layout.write_layout.clone(), shared.layout.clone()];
 
         let pipeline_cache = world.resource::<PipelineCache>();
-        let ray_pipeid = pipeline_cache.queue_compute_pipeline(
-            utils::compute_pipeline_descriptor(shader, "main", &bind_group_layouts),
-        );
+        let ray_pipeid = pipeline_cache.queue_compute_pipeline(utils::compute_pipeline_descriptor(
+            shader,
+            "main",
+            &bind_group_layouts,
+        ));
 
-        RaymarchPipeline {
-            ray_pipeid,
-        }
+        RaymarchPipeline { ray_pipeid }
     }
 }

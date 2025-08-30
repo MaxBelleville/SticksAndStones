@@ -48,7 +48,8 @@ pub struct WorldData {
     pub file_data: Vec<u8>,
     pub root_size: f32,
     pub root_min: Vec3,
-    pub image: Handle<Image>,
+    pub camera: Handle<Image>,
+    pub render: Handle<Image>,
 }
 
 #[derive(Component, Clone, ExtractComponent)]

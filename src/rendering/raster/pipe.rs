@@ -48,18 +48,20 @@ impl SpecializedMeshPipeline for RasterPipeline {
         mesh_key: Self::Key,
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+    
         // Define the vertex attributes based on a standard bevy [`Mesh`]
         let mut vertex_attributes = Vec::new();
         if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
             // Make sure this matches the shader location
             vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
-        if layout.0.contains(Mesh::ATTRIBUTE_COLOR) {
+        if layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
             // Make sure this matches the shader location
-            vertex_attributes.push(Mesh::ATTRIBUTE_COLOR.at_shader_location(1));
+            vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
         }
         // This will automatically generate the correct `VertexBufferLayout` based on the vertex attributes
         let vertex_buffer_layout = layout.0.get_layout(&vertex_attributes)?;
+   
 
         Ok(RenderPipelineDescriptor {
             label: Some("RasterPipeline".into()),

@@ -1,19 +1,16 @@
 use std::ops::Range;
 
 use bevy::{
-    ecs::query::QueryItem,
-    math::FloatOrd,
-    pbr::{DrawMesh, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup},
-    platform::collections::HashSet,
-    prelude::*,
-    render::{
-        camera::{Camera, ExtractedCamera}, extract_component::ExtractComponent, mesh::RenderMesh, render_asset::RenderAssets, render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode}, render_phase::{
+    core_pipeline::{oit::OrderIndependentTransparencySettings, prepass::DepthPrepass}, ecs::query::QueryItem, math::FloatOrd, pbr::{DrawMesh, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup}, platform::collections::HashSet, prelude::*, render::{
+        camera::{Camera, ExtractedCamera}, mesh::RenderMesh, render_asset::RenderAssets, render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode}, render_phase::{
             CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions, PhaseItem,
             PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem, ViewSortedRenderPhases,
         }, render_resource::{
-            CachedRenderPipelineId, LoadOp, Operations, PipelineCache, RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor, SpecializedMeshPipelines, StoreOp
+            CachedRenderPipelineId, LoadOp, Operations, PipelineCache, RenderPassColorAttachment,
+            RenderPassDepthStencilAttachment, RenderPassDescriptor, SpecializedMeshPipelines,
+            StoreOp,
         }, renderer::RenderContext, sync_world::MainEntity, view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity, ViewTarget}, Extract
-    },
+    }
 };
 
 use super::{res, shared};
@@ -50,7 +47,6 @@ impl ViewNode for RasterMainPassNode {
             return Ok(());
         };
 
-        
         // get GBuffer targets (render-world resource)
         let gbuffer = match world.get_resource::<res::GBufferTargets>() {
             Some(g) => g,
@@ -58,18 +54,29 @@ impl ViewNode for RasterMainPassNode {
         };
 
         // must have the textures present
-        let albedo_view = match &gbuffer.albedo { Some(t) => &t.default_view, None => return Ok(()) };
-        let normal_view = match &gbuffer.normal { Some(t) => &t.default_view, None => return Ok(()) };
-        let depth_color_view = match &gbuffer.ray_depth { Some(t) => &t.default_view, None => return Ok(()) }; // depth_color as R32 (or separate)
-        let depth_attach_view = match &gbuffer.depth_attach { Some(t) => &t.default_view, None => return Ok(()) };
-        let clear = ClearColor(Color::BLACK).to_linear();
+        let albedo_view = match &gbuffer.albedo {
+            Some(t) => &t.default_view,
+            None => return Ok(()),
+        };
+        let normal_view = match &gbuffer.normal {
+            Some(t) => &t.default_view,
+            None => return Ok(()),
+        };
+        let depth_color_view = match &gbuffer.ray_depth {
+            Some(t) => &t.default_view,
+            None => return Ok(()),
+        }; // depth_color as R32 (or separate)
+        let depth_attach_view = match &gbuffer.depth_attach {
+            Some(t) => &t.default_view,
+            None => return Ok(()),
+        };
         // Build render pass descriptor with your MRTs and depth attachment
         let color_attachments = &[
             Some(RenderPassColorAttachment {
                 view: albedo_view,
                 resolve_target: None,
                 ops: Operations {
-                    load: LoadOp::Clear(clear.into()), // albedo clear
+                    load: LoadOp::Load, // albedo clear
                     store: StoreOp::Store,
                 },
             }),
@@ -77,7 +84,7 @@ impl ViewNode for RasterMainPassNode {
                 view: normal_view,
                 resolve_target: None,
                 ops: Operations {
-                    load: LoadOp::Clear(clear.into()), // neutral normal
+                    load: LoadOp::Load, // neutral normal
                     store: StoreOp::Store,
                 },
             }),
@@ -85,7 +92,7 @@ impl ViewNode for RasterMainPassNode {
                 view: depth_color_view,
                 resolve_target: None,
                 ops: Operations {
-                    load: LoadOp::Clear(clear.into()), // depth_color clear (not used visually)
+                    load: LoadOp::Load, // depth_color clear (not used visually)
                     store: StoreOp::Store,
                 },
             }),
@@ -94,7 +101,7 @@ impl ViewNode for RasterMainPassNode {
         let depth_stencil_attachment = Some(RenderPassDepthStencilAttachment {
             view: depth_attach_view,
             depth_ops: Some(Operations {
-                load: LoadOp::Load, // likely Load (prefill wrote it). Use Clear if you want to clear here.
+                load: LoadOp::Clear(1.0), // likely Load (prefill wrote it). Use Clear if you want to clear here.
                 store: StoreOp::Store,
             }),
             stencil_ops: None,
@@ -131,9 +138,6 @@ impl ViewNode for RasterMainPassNode {
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct RasterRenderLabel;
 
-#[derive(Component, ExtractComponent, Clone, Copy, Default)]
-pub struct DrawRaster;
-
 pub type DrawMesh3dRaster = (
     SetItemPipeline,
     // This will set the view bindings in group 0
@@ -148,7 +152,7 @@ pub type DrawMesh3dRaster = (
 // that will be used by the render world. We need to give that resource all views that will use
 // that phase
 pub fn extract_camera_phases(
-    mut stencil_phases: ResMut<ViewSortedRenderPhases<RasterMainPass>>,
+    mut raster_phases: ResMut<ViewSortedRenderPhases<RasterMainPass>>,
     cameras: Extract<Query<(Entity, &Camera), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
 ) {
@@ -160,12 +164,12 @@ pub fn extract_camera_phases(
         // This is the main camera, so we use the first subview index (0)
         let retained_view_entity = RetainedViewEntity::new(main_entity.into(), None, 0);
 
-        stencil_phases.insert_or_clear(retained_view_entity);
+        raster_phases.insert_or_clear(retained_view_entity);
         live_entities.insert(retained_view_entity);
     }
 
     // Clear out all dead views.
-    stencil_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
+    raster_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
 }
 
 // This is a very important step when writing a custom phase.
@@ -179,64 +183,59 @@ pub fn queue_meshes(
     render_meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
     mut render_phases: ResMut<ViewSortedRenderPhases<RasterMainPass>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
-    has_marker: Query<(), With<DrawRaster>>,
+    views: Query<(&ExtractedView, &RenderVisibleEntities,  &Msaa,   Has<DepthPrepass>,Has<OrderIndependentTransparencySettings>)>,
 ) {
-    for (view, visible_entities, msaa) in &mut views {
-        let Some(custom_phase) = render_phases.get_mut(&view.retained_view_entity) else {
-            continue;
-        };
-        let draw_custom = draw_function.read().id::<DrawMesh3dRaster>();
+    for (view, visible_entities, 
+        msaa,has_depth,has_oit) in &views {
+        if let Some(phase) = render_phases.get_mut(&view.retained_view_entity) {
+            let draw_custom = draw_function.read().id::<DrawMesh3dRaster>();
 
-        // Create the key based on the view.
-        // In this case we only care about MSAA and HDR
-        let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
-            | MeshPipelineKey::from_hdr(view.hdr);
-
-        let rangefinder = view.rangefinder3d();
-        // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, visible_entity) in visible_entities.iter::<Mesh3d>() {
-            // We only want meshes with the marker component to be queued to our phase.
-            if has_marker.get(*render_entity).is_err() {
-                continue;
+            let mut view_key  = MeshPipelineKey::from_msaa_samples(msaa.samples()) | MeshPipelineKey::from_hdr(view.hdr);
+           
+            if has_depth {
+                view_key |= MeshPipelineKey::DEPTH_PREPASS;
             }
-            let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*visible_entity)
-            else {
-                continue;
-            };
-            let Some(mesh) = render_meshes.get(mesh_instance.mesh_asset_id) else {
-                continue;
-            };
+            if has_oit {
+                view_key |= MeshPipelineKey::OIT_ENABLED;
+            }
 
-            // Specialize the key for the current mesh entity
-            // For this example we only specialize based on the mesh topology
-            // but you could have more complex keys and that's where you'd need to create those keys
-            let mut mesh_key = view_key;
-            mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
 
-            let pipeline_id =
-                pipelines.specialize(&pipeline_cache, &draw_pipeline, mesh_key, &mesh.layout);
-            let pipeline_id = match pipeline_id {
-                Ok(id) => id,
-                Err(err) => {
-                    error!("{}", err);
+
+            for (render_entity, visible_entity) in visible_entities.iter::<Mesh3d>() {
+                let Some(mesh_instance) =
+                    render_mesh_instances.render_mesh_queue_data(*visible_entity)
+                else {
                     continue;
-                }
-            };
-            let distance = rangefinder.distance_translation(&mesh_instance.translation);
-            // At this point we have all the data we need to create a phase item and add it to our
-            // phase
-            custom_phase.add(RasterMainPass {
-                // Sort the data based on the distance to the view
-                sort_key: FloatOrd(distance),
-                entity: (*render_entity, *visible_entity),
-                pipeline: pipeline_id,
-                draw_function: draw_custom,
-                // Sorted phase items aren't batched
-                batch_range: 0..1,
-                extra_index: PhaseItemExtraIndex::None,
-                indexed: mesh.indexed(),
-            });
+                };
+                let Some(mesh) = render_meshes.get(mesh_instance.mesh_asset_id) else {
+                    continue;
+                };
+
+                // Start from the known-good view key
+                let mut mesh_key = view_key;
+                mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
+
+                let pipeline_id =
+                    match pipelines.specialize(&pipeline_cache, &draw_pipeline, mesh_key, &mesh.layout) {
+                        Ok(id) => id,
+                        Err(err) => {
+                            error!("specialization error: {}", err);
+                            continue;
+                        }
+                    };
+
+                let distance = view.rangefinder3d().distance_translation(&mesh_instance.translation);
+
+                phase.add(RasterMainPass {
+                    sort_key: FloatOrd(distance),
+                    entity: (*render_entity, *visible_entity),
+                    pipeline: pipeline_id,
+                    draw_function: draw_custom,
+                    batch_range: 0..1,
+                    extra_index: PhaseItemExtraIndex::None,
+                    indexed: mesh.indexed(),
+                });
+            }
         }
     }
 }

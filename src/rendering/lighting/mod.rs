@@ -1,11 +1,9 @@
-use super::{shared,res, utils};
+use super::{res, shared, utils};
 use bevy::{
     prelude::*,
     render::{
         render_graph::{self, RenderLabel, ViewNode},
-        render_resource::{
-            CachedComputePipelineId, PipelineCache,
-        },
+        render_resource::{BindGroupEntries, CachedComputePipelineId, PipelineCache},
         renderer::{RenderContext, RenderDevice},
         view::ViewTarget,
     },
@@ -38,9 +36,10 @@ impl ViewNode for LightingNode {
             return Ok(());
         };
 
+
         utils::run_compute_pass(
             render_context,
-            vec![current,shared],
+            vec![current, shared],
             cache,
             world
                 .resource::<shared::res::WindowManagerSettings>()
@@ -52,13 +51,22 @@ impl ViewNode for LightingNode {
     }
 }
 
-pub fn prepare_bind_group(  
+pub fn prepare_bind_group(
     render_device: Res<RenderDevice>,
     gbf_layout: Res<res::GBufferLayout>,
     targets: Res<res::GBufferTargets>,
     mut render_bind_groups: ResMut<res::RenderBindGroups>,
 ) {
-    render_bind_groups.lighting = Some(utils::create_bind_group("GBufferLighting", &render_device,&gbf_layout.read_layout,targets.into_inner()));
+    render_bind_groups.lighting = Some(render_device.create_bind_group(
+         "GBufferLighting",
+        &gbf_layout.read_layout,
+        &BindGroupEntries::sequential((
+            &targets.albedo.as_ref().unwrap().default_view,
+            &targets.normal.as_ref().unwrap().default_view,
+            &targets.ray_depth.as_ref().unwrap().default_view,
+            &targets.final_out.as_ref().unwrap().default_view,
+        )),
+    ));
 }
 
 #[derive(Resource)]
@@ -79,8 +87,6 @@ impl FromWorld for LightingPipeline {
             utils::compute_pipeline_descriptor(shader, "main", &bind_group_layouts),
         );
 
-        LightingPipeline {
-            lighting_pipeid,
-        }
+        LightingPipeline { lighting_pipeid }
     }
 }

@@ -1,3 +1,5 @@
+
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::{
     core_pipeline::prepass::DepthPrepass,
     pbr::light_consts::*,
@@ -9,10 +11,10 @@ use bevy_enhanced_input::prelude::*;
 
 use bevy_lunex::{CameraTextureRenderConstructor, ImageTextureConstructor};
 
+
 use super::player;
 
 use super::shared;
-
 pub struct EnviromentPlugin;
 
 // Timer for updating the daylight cycle (updating the atmosphere every frame is slow, so it's better to do incremental changes)
@@ -39,7 +41,7 @@ impl Plugin for EnviromentPlugin {
             ..default()
         })
         .insert_resource(CycleTimer(Timer::new(
-            std::time::Duration::from_millis(500),
+            std::time::Duration::from_millis(100),
             TimerMode::Repeating,
         )))
         .insert_resource(shared::res::AtmosphereData {
@@ -58,7 +60,11 @@ fn setup_enviroment(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut world: ResMut<shared::res::WorldData>,
+    settings: Res<shared::res::WindowManagerSettings>,
+     mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+   
     // Our Sun
     commands.spawn((
         DirectionalLight {
@@ -68,10 +74,16 @@ fn setup_enviroment(
         },
         shared::components::Sun, // Marks the light as Sun
     ));
-    
-    world.image = images.add(Image::clear_render_texture());
 
+
+    world.camera= images.add(Image::clear_render_texture());
+    world.render= images.add(Image::clear_render_texture());
     let fov_y = 70.0_f32.to_radians(); // Default Bevy Camera3d fov_y is 70 degrees
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        Transform::from_xyz(0.0, 40.0, 0.0),
+    ));
 
     // Simple transform shape just for reference
     //Should draw infront of the compute shader plane
@@ -90,9 +102,9 @@ fn setup_enviroment(
                 ..default()
             }),
             shared::res::ComputeCamera,
-            AtmosphereCamera::default(),
-            Camera::clear_render_to(world.image.clone()).with_order(-1),
-            Transform::from_xyz(0., 64., 0.),
+           // AtmosphereCamera::default(),
+            Camera::clear_render_to(world.camera.clone()).with_order(-1),
+            Transform::from_xyz(0., 32., 0.).looking_at(vec3(10.0,32.0,0.0),Dir3::Y),
             Msaa::Off,
             DepthPrepass,
         ));
@@ -116,7 +128,7 @@ fn daylight_cycle(
     timer.0.tick(time.delta());
 
     if timer.0.finished() {
-        let t = atmo_data.time / 120.0;
+        let t = atmo_data.time / 240.0;
         let theta = t % std::f32::consts::TAU;
 
         let sun_dir = Vec3::new(theta.cos(), theta.sin(), 0.3 * theta.cos()).normalize();
