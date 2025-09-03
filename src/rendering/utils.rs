@@ -3,12 +3,9 @@ use std::borrow::Cow;
 use bevy::{
     prelude::*,
     render::{
-        mesh::VertexBufferLayout,
         render_resource::{
-            BindGroup, BindGroupLayout, CachedComputePipelineId, ColorTargetState, CompareFunction,
-            ComputePassDescriptor, ComputePipelineDescriptor, DepthBiasState, DepthStencilState,
-            FragmentState, MultisampleState, PipelineCache, PrimitiveState,
-            RenderPipelineDescriptor, ShaderType, StencilState, TextureFormat, VertexState,
+            BindGroup, BindGroupLayout, CachedComputePipelineId,
+            ComputePassDescriptor, ComputePipelineDescriptor, PipelineCache, ShaderType,
         },
         renderer::RenderContext,
     },
@@ -33,62 +30,6 @@ pub fn compute_pipeline_descriptor(
     }
 }
 
-pub fn render_pipeline_descriptor_depth(
-    shader: Handle<Shader>,
-    frag_entry: &str,
-    vert_entry: &str,
-    bind_group_layouts: &Vec<BindGroupLayout>,
-) -> RenderPipelineDescriptor {
-    render_pipeline_descriptor(
-        shader,
-        frag_entry,
-        vert_entry,
-        vec![],
-        vec![],
-        Some(DepthStencilState {
-            format: TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: CompareFunction::Always,
-            stencil: StencilState::default(),
-            bias: DepthBiasState::default(),
-        }),
-        bind_group_layouts,
-    )
-}
-
-pub fn render_pipeline_descriptor(
-    shader: Handle<Shader>,
-    frag_entry: &str,
-    vert_entry: &str,
-    frag_targets: Vec<Option<ColorTargetState>>,
-    buffers: Vec<VertexBufferLayout>,
-    depth_stencil: Option<DepthStencilState>,
-    bind_group_layouts: &Vec<BindGroupLayout>,
-) -> RenderPipelineDescriptor {
-    RenderPipelineDescriptor {
-        label: None,
-        layout: bind_group_layouts.clone(),
-
-        vertex: VertexState {
-            shader: shader.clone(),
-            entry_point: Cow::from(vert_entry.to_owned()), // vertex entry
-            buffers,
-            shader_defs: vec![],
-        },
-
-        fragment: Some(FragmentState {
-            shader,
-            entry_point: Cow::from(frag_entry.to_owned()), // fragment entry
-            targets: frag_targets,
-            shader_defs: vec![], // no color, only depth
-        }),
-        primitive: PrimitiveState::default(),
-        depth_stencil,
-        multisample: MultisampleState::default(),
-        push_constant_ranges: vec![],
-        zero_initialize_workgroup_memory: true,
-    }
-}
 
 pub fn run_compute_pass(
     render_context: &mut RenderContext,
@@ -107,8 +48,8 @@ pub fn run_compute_pass(
     pass.set_pipeline(pipeline);
 
     pass.dispatch_workgroups(
-        settings.dim.z as u32 / settings.workgroup_size,
-        settings.dim.w as u32 / settings.workgroup_size,
+        (settings.dim.z.round() as u32+7) / 8,
+        (settings.dim.w.round() as u32+7) / 8,
         1,
     );
 }

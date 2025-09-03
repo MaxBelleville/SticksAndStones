@@ -10,14 +10,14 @@ pub struct GBufferTargets {
     pub albedo: Option<CachedTexture>,
     pub normal: Option<CachedTexture>,
     pub ray_depth: Option<CachedTexture>,
-    pub depth_attach: Option<CachedTexture>,
+    pub raster_depth: Option<CachedTexture>,
     pub final_out: Option<CachedTexture>,
 }
 
 #[derive(Resource, Default)]
 pub struct RenderBindGroups {
     pub raymarch: Option<BindGroup>,
-    pub prefill_depth: Option<BindGroup>,
+    pub raster: Option<BindGroup>,
     pub lighting: Option<BindGroup>,
     pub shared: Option<BindGroup>,
 }
@@ -26,6 +26,7 @@ pub struct RenderBindGroups {
 pub struct GBufferLayout {
     pub read_layout: BindGroupLayout,
     pub write_layout: BindGroupLayout,
+    pub raster_layout: BindGroupLayout,
 }
 
 impl FromWorld for GBufferLayout {
@@ -75,10 +76,27 @@ impl FromWorld for GBufferLayout {
                 ),
             ),
         );
+         let raster_layout = render_device.create_bind_group_layout(
+            "RasterGBuffer",
+            &BindGroupLayoutEntries::sequential(
+                ShaderStages::FRAGMENT,
+                (
+                    binding_types::texture_2d(
+                        TextureSampleType::Float { filterable: true }
+                    ),
+                    binding_types::sampler(SamplerBindingType::Filtering),
+                    binding_types::texture_storage_2d(
+                        TextureFormat::R32Float,
+                        StorageTextureAccess::ReadOnly,
+                    ),
+                ),
+            ),
+        );
 
         Self {
             read_layout,
             write_layout,
+            raster_layout,
         }
     }
 }

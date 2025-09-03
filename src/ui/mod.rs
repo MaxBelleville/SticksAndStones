@@ -96,7 +96,7 @@ fn setup(
                 Name::new("CanvasRender"),
                 UiLayout::solid()
                     .size((16.0, 9.0))
-                    .scaling(Scaling::Fit)
+                    .scaling(Scaling::Fill)
                     .pack(),
                 Sprite::from_image(world.render.clone()),
                 UiEmbedding,

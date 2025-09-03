@@ -1,4 +1,7 @@
-
+use bevy::asset::RenderAssetUsages;
+use bevy::core_pipeline::fxaa::Fxaa;
+use bevy::core_pipeline::prepass::MotionVectorPrepass;
+use bevy::pbr::CascadeShadowConfigBuilder;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::{
     core_pipeline::prepass::DepthPrepass,
@@ -9,7 +12,7 @@ use bevy::{
 use bevy_atmosphere::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
-use bevy_lunex::{CameraTextureRenderConstructor, ImageTextureConstructor};
+use bevy_lunex::CameraTextureRenderConstructor;
 
 
 use super::player;
@@ -72,17 +75,34 @@ fn setup_enviroment(
             illuminance: lux::RAW_SUNLIGHT,
             ..default()
         },
+        CascadeShadowConfigBuilder {
+            num_cascades: 3,
+            maximum_distance: 10.0,
+            ..default()
+        }
+        .build(),
         shared::components::Sun, // Marks the light as Sun
     ));
+    let mut image = Image::new_fill(
+        Extent3d {
+            width: settings.dim.z.round() as u32,
+            height: settings.dim.w.round() as u32,
+            ..Default::default()
+        },
+        TextureDimension::D2,
+        &[0, 0, 0, 0],
+        TextureFormat::Bgra8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
 
-
-    world.camera= images.add(Image::clear_render_texture());
-    world.render= images.add(Image::clear_render_texture());
+    world.camera= images.add(image.clone());
+    world.render= images.add(image);
     let fov_y = 70.0_f32.to_radians(); // Default Bevy Camera3d fov_y is 70 degrees
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-        Transform::from_xyz(0.0, 40.0, 0.0),
+        Transform::from_xyz(10.0, 32.0, 0.0),
     ));
 
     // Simple transform shape just for reference
@@ -102,11 +122,14 @@ fn setup_enviroment(
                 ..default()
             }),
             shared::res::ComputeCamera,
-           // AtmosphereCamera::default(),
+            AtmosphereCamera::default(),
             Camera::clear_render_to(world.camera.clone()).with_order(-1),
             Transform::from_xyz(0., 32., 0.).looking_at(vec3(10.0,32.0,0.0),Dir3::Y),
             Msaa::Off,
             DepthPrepass,
+            MotionVectorPrepass,
+            Fxaa::default(),
+
         ));
 }
 

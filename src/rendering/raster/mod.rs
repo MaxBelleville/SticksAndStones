@@ -1,16 +1,23 @@
 use std::ops::Range;
 
 use bevy::{
-    core_pipeline::{oit::OrderIndependentTransparencySettings, prepass::DepthPrepass}, ecs::query::QueryItem, math::FloatOrd, pbr::{DrawMesh, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup}, platform::collections::HashSet, prelude::*, render::{
+    core_pipeline::{
+        oit::OrderIndependentTransparencySettings,
+        prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass},
+    },
+    ecs::query::QueryItem,
+    math::FloatOrd,
+    pbr::{DrawMesh, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup},
+    platform::collections::HashSet,
+    prelude::*,
+    render::{
         camera::{Camera, ExtractedCamera}, mesh::RenderMesh, render_asset::RenderAssets, render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode}, render_phase::{
             CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions, PhaseItem,
             PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem, ViewSortedRenderPhases,
         }, render_resource::{
-            CachedRenderPipelineId, LoadOp, Operations, PipelineCache, RenderPassColorAttachment,
-            RenderPassDepthStencilAttachment, RenderPassDescriptor, SpecializedMeshPipelines,
-            StoreOp,
-        }, renderer::RenderContext, sync_world::MainEntity, view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity, ViewTarget}, Extract
-    }
+            BindGroupEntries, CachedRenderPipelineId, LoadOp, Operations, PipelineCache, RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, SpecializedMeshPipelines, StoreOp
+        }, renderer::{RenderContext, RenderDevice}, sync_world::MainEntity, view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity, ViewDepthTexture, ViewTarget}, Extract
+    },
 };
 
 use super::{res, shared};
@@ -23,14 +30,15 @@ impl ViewNode for RasterMainPassNode {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
-        &'static ViewTarget,
+          &'static ViewTarget,
+        &'static ViewDepthTexture,
     );
 
     fn run<'w>(
         &self,
         graph: &mut RenderGraphContext,
         render_context: &mut RenderContext<'w>,
-        (camera, view, _target): QueryItem<'w, Self::ViewQuery>,
+        (camera, view,_target, depth): QueryItem<'w, Self::ViewQuery>,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
@@ -53,6 +61,16 @@ impl ViewNode for RasterMainPassNode {
             None => return Ok(()),
         };
 
+        let render_bind_groups = match world.get_resource::<res::RenderBindGroups>() {
+            Some(rbg) => rbg,
+            None => return Ok(()),
+        };
+
+        let raster_group = match &render_bind_groups.raster {
+            Some(r) => r,
+            None => return Ok(()),
+        };
+
         // must have the textures present
         let albedo_view = match &gbuffer.albedo {
             Some(t) => &t.default_view,
@@ -62,14 +80,11 @@ impl ViewNode for RasterMainPassNode {
             Some(t) => &t.default_view,
             None => return Ok(()),
         };
-        let depth_color_view = match &gbuffer.ray_depth {
+        let raster_depth_view = match &gbuffer.raster_depth {
             Some(t) => &t.default_view,
             None => return Ok(()),
         }; // depth_color as R32 (or separate)
-        let depth_attach_view = match &gbuffer.depth_attach {
-            Some(t) => &t.default_view,
-            None => return Ok(()),
-        };
+
         // Build render pass descriptor with your MRTs and depth attachment
         let color_attachments = &[
             Some(RenderPassColorAttachment {
@@ -89,7 +104,7 @@ impl ViewNode for RasterMainPassNode {
                 },
             }),
             Some(RenderPassColorAttachment {
-                view: depth_color_view,
+                view: raster_depth_view,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Load, // depth_color clear (not used visually)
@@ -97,16 +112,7 @@ impl ViewNode for RasterMainPassNode {
                 },
             }),
         ];
-
-        let depth_stencil_attachment = Some(RenderPassDepthStencilAttachment {
-            view: depth_attach_view,
-            depth_ops: Some(Operations {
-                load: LoadOp::Clear(1.0), // likely Load (prefill wrote it). Use Clear if you want to clear here.
-                store: StoreOp::Store,
-            }),
-            stencil_ops: None,
-        });
-
+ 
         // Render pass setup
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
             label: Some("raster pass"),
@@ -115,7 +121,7 @@ impl ViewNode for RasterMainPassNode {
             // passes to render custom effects using it.
             color_attachments,
             // We don't bind any depth buffer for this pass
-            depth_stencil_attachment,
+            depth_stencil_attachment: Some(depth.get_attachment(StoreOp::Store)),
             timestamp_writes: None,
             occlusion_query_set: None,
         });
@@ -123,13 +129,13 @@ impl ViewNode for RasterMainPassNode {
         if let Some(viewport) = camera.viewport.as_ref() {
             render_pass.set_camera_viewport(viewport);
         }
-
+        render_pass.set_bind_group(2, raster_group, &[]);
         // Render the phase
         // This will execute each draw functions of each phase items queued in this phase
         if let Err(err) = raster_phase.render(&mut render_pass, world, view_entity) {
             error!("Error encountered while rendering the stencil phase {err:?}");
         }
-
+        // info!("raster drew fullscreen triangle");
         Ok(())
     }
 }
@@ -147,6 +153,29 @@ pub type DrawMesh3dRaster = (
     // This will draw the mesh
     DrawMesh,
 );
+
+pub fn prepare_bind_group(
+    render_device: Res<RenderDevice>,
+    gbf_layout: Res<res::GBufferLayout>,
+    gbuffer: Res<res::GBufferTargets>,
+    views: Query<&ViewTarget, With<shared::res::ComputeCamera>>,
+    mut render_bind_groups: ResMut<res::RenderBindGroups>,
+) {
+    if let Ok(target) = views.single() {
+
+        render_bind_groups.raster = Some(render_device.create_bind_group(
+            "GBufferRaster",
+            &gbf_layout.raster_layout,
+            &BindGroupEntries::sequential((
+                target.main_texture_view(),
+                &render_device.create_sampler(&SamplerDescriptor::default()),
+                &gbuffer.ray_depth.as_ref().unwrap().default_view,
+            )),
+        ));
+    } else {
+        panic!("View not found in raster");
+    }
+}
 
 // When defining a phase, we need to extract it from the main world and add it to a resource
 // that will be used by the render world. We need to give that resource all views that will use
@@ -183,23 +212,51 @@ pub fn queue_meshes(
     render_meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
     mut render_phases: ResMut<ViewSortedRenderPhases<RasterMainPass>>,
-    views: Query<(&ExtractedView, &RenderVisibleEntities,  &Msaa,   Has<DepthPrepass>,Has<OrderIndependentTransparencySettings>)>,
+    views: Query<(
+        &ExtractedView,
+        &RenderVisibleEntities,
+        &Msaa,
+        (
+            Has<NormalPrepass>,
+            Has<DepthPrepass>,
+            Has<MotionVectorPrepass>,
+            Has<DeferredPrepass>,
+            Has<OrderIndependentTransparencySettings>,
+        ),
+    )>,
 ) {
-    for (view, visible_entities, 
-        msaa,has_depth,has_oit) in &views {
+    for (
+        view,
+        visible_entities,
+        msaa,
+        (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass, oit),
+    ) in &views
+    {
         if let Some(phase) = render_phases.get_mut(&view.retained_view_entity) {
             let draw_custom = draw_function.read().id::<DrawMesh3dRaster>();
 
-            let mut view_key  = MeshPipelineKey::from_msaa_samples(msaa.samples()) | MeshPipelineKey::from_hdr(view.hdr);
-           
-            if has_depth {
+            let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
+                | MeshPipelineKey::from_hdr(view.hdr);
+
+            if normal_prepass {
+                view_key |= MeshPipelineKey::NORMAL_PREPASS;
+            }
+
+            if depth_prepass {
                 view_key |= MeshPipelineKey::DEPTH_PREPASS;
             }
-            if has_oit {
-                view_key |= MeshPipelineKey::OIT_ENABLED;
+
+            if motion_vector_prepass {
+                view_key |= MeshPipelineKey::MOTION_VECTOR_PREPASS;
             }
 
+            if deferred_prepass {
+                view_key |= MeshPipelineKey::DEFERRED_PREPASS;
+            }
 
+            if oit {
+                view_key |= MeshPipelineKey::OIT_ENABLED;
+            }
 
             for (render_entity, visible_entity) in visible_entities.iter::<Mesh3d>() {
                 let Some(mesh_instance) =
@@ -215,16 +272,22 @@ pub fn queue_meshes(
                 let mut mesh_key = view_key;
                 mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
 
-                let pipeline_id =
-                    match pipelines.specialize(&pipeline_cache, &draw_pipeline, mesh_key, &mesh.layout) {
-                        Ok(id) => id,
-                        Err(err) => {
-                            error!("specialization error: {}", err);
-                            continue;
-                        }
-                    };
+                let pipeline_id = match pipelines.specialize(
+                    &pipeline_cache,
+                    &draw_pipeline,
+                    mesh_key,
+                    &mesh.layout,
+                ) {
+                    Ok(id) => id,
+                    Err(err) => {
+                        error!("specialization error: {}", err);
+                        continue;
+                    }
+                };
 
-                let distance = view.rangefinder3d().distance_translation(&mesh_instance.translation);
+                let distance = view
+                    .rangefinder3d()
+                    .distance_translation(&mesh_instance.translation);
 
                 phase.add(RasterMainPass {
                     sort_key: FloatOrd(distance),

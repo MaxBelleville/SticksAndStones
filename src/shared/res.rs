@@ -14,8 +14,7 @@ use super::{maths,contree,GameState};
 
 #[derive(Resource, Debug, Clone,ExtractResource)]
 pub struct WindowManagerSettings {
-    pub display_factor: u32,
-    pub workgroup_size: u32,
+    pub display_factor: f32,
     pub dim: Vec4,
     pub window_mode: WindowMode,
     pub present_mode: PresentMode,
@@ -23,12 +22,11 @@ pub struct WindowManagerSettings {
 
 impl Default for WindowManagerSettings {
     fn default() -> Self {
-        let display_fact = 2;
-        let (width, height) =  (1280 / display_fact, 720 / display_fact);
+        let display_fact = 2.0;
+        let (width, height) =  (1366.0 / display_fact, 768.0 / display_fact);
         Self {
             display_factor: display_fact,
-            workgroup_size: 8,
-            dim: vec4(0.0,0.0, width as f32, height as f32),
+            dim: vec4(0.0,0.0, width, height),
             window_mode: WindowMode::Fullscreen(MonitorSelection::Current, VideoModeSelection::Current),
             present_mode: PresentMode::AutoVsync,
         }

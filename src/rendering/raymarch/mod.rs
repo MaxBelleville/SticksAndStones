@@ -45,6 +45,7 @@ impl ViewNode for RaymarchNode {
                 .clone(),
             pipeline.ray_pipeid,
         );
+       //  info!("raymarch drew fullscreen triangle");
         Ok(())
     }
 }

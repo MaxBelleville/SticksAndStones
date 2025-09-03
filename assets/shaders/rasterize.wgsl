@@ -1,39 +1,76 @@
 #import bevy_pbr::{
     mesh_functions,
-    view_transformations::position_world_to_clip
+    mesh_bindings,
+    mesh_view_bindings::view,
+    forward_io::{Vertex, VertexOutput},
+    view_transformations,
+    prepass_utils,
+    utils::coords_to_viewport_uv,
 }
-
-struct Vertex {
-    @builtin(instance_index) instance_index: u32,
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,   // pull normal from mesh
-
-};
-
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) world_position: vec4<f32>,
-    @location(1) world_normal: vec3<f32>,
-};
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
-   var out: VertexOutput;
-    // This is how bevy computes the world position
-    // The vertex.instance_index is very important. Especially if you are using batching and gpu preprocessing
-    var world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
-    out.world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4(vertex.position, 1.0));
-    out.clip_position = position_world_to_clip(out.world_position.xyz);
-    out.world_normal = mesh_functions::mesh_normal_local_to_world(vertex.normal,vertex.instance_index);
-    return out;
+    var out: VertexOutput;
 
+    var world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
+
+    #ifdef VERTEX_NORMALS
+        out.world_normal = mesh_functions::mesh_normal_local_to_world(
+            vertex.normal,
+            // Use vertex_no_morph.instance_index instead of vertex.instance_index to work around a wgpu dx12 bug.
+            // See https://github.com/gfx-rs/naga/issues/2416
+            vertex.instance_index
+        );
+    #endif
+
+    #ifdef VERTEX_POSITIONS
+        out.world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
+        out.position = view_transformations::position_world_to_clip(out.world_position.xyz);
+    #endif
+
+    #ifdef VERTEX_UVS_A
+        out.uv = vertex.uv;
+    #endif
+    #ifdef VERTEX_UVS_B
+        out.uv_b = vertex.uv_b;
+    #endif
+
+    #ifdef VERTEX_TANGENTS
+        out.world_tangent = mesh_functions::mesh_tangent_local_to_world(
+            world_from_local,
+            vertex.tangent,
+            // Use vertex_no_morph.instance_index instead of vertex.instance_index to work around a wgpu dx12 bug.
+            // See https://github.com/gfx-rs/naga/issues/2416
+            vertex.instance_index
+        );
+    #endif
+
+    #ifdef VERTEX_COLORS
+        out.color = vertex.color;
+    #endif
+
+    #ifdef VERTEX_OUTPUT_INSTANCE_INDEX
+        // Use vertex_no_morph.instance_index instead of vertex.instance_index to work around a wgpu dx12 bug.
+        // See https://github.com/gfx-rs/naga/issues/2416
+        out.instance_index = vertex.instance_index;
+    #endif
+
+    #ifdef VISIBILITY_RANGE_DITHER
+        out.visibility_range_dither = mesh_functions::get_visibility_range_dither_level(
+            vertex.instance_index, mesh_world_from_local[3]);
+    #endif
+        return out;
 }
 
+
+@group(2) @binding(0) var color_tex: texture_2d<f32>;
+@group(2) @binding(1) var color_tex_sampler: sampler;
+@group(2) @binding(2) var ray_depth_tex: texture_storage_2d<r32float, read>;
+
 struct FragmentOutput {
-    @builtin(frag_depth) depth_attach: f32,
     @location(0) albedo: vec4<f32>,
     @location(1) normal: vec4<f32>,
-    @location(2) ray_depth:f32,
+    @location(2) raster_depth:f32,
 };
 
 
@@ -41,18 +78,21 @@ struct FragmentOutput {
 fn fragment(in: VertexOutput)-> FragmentOutput    
 {
     var out: FragmentOutput;
-    // write depth attachment (NDC z/w in WebGPU is 0..1)
-   
 
+    let uv = coords_to_viewport_uv(in.position.xy,view.viewport);
 
-    // Simple albedo (flat color)
-    out.albedo = vec4(1.0, 0.0, 1.0, 1.0);
+    let color = textureSample(color_tex, color_tex_sampler, uv);
+    let ray_depth =  textureLoad(ray_depth_tex, vec2<i32>(in.position.xy)).r;
 
+    if(ray_depth!=0.0&&ray_depth>=in.position.z) {
+        discard;
+    }
+
+    out.albedo =  color;
     // World-space normal, remapped to 0..1 for storage
     out.normal  = vec4(normalize(in.world_normal) * 0.5 + 0.5,1.0);
 
-    // Linear depth (you can choose world_z, distance from camera, etc.)
-    out.ray_depth = length(in.world_position.xyz) - out.depth_attach;
+    out.raster_depth = in.position.z;
 
     return out;
 }

@@ -1,26 +1,5 @@
 use bevy::math::*;
 
-#[inline]
-pub fn get_noise_seed(seed: &[u8;32]) -> Vec3 {
-    let part1 = &seed[0..11];
-    let part2 = &seed[11..22]; 
-    let part3 = &seed[22..32]; 
-
-    let sum1 = part1.iter().map(|&b| b as u32).sum::<u32>() as f32;
-    let sum2 = part2.iter().map(|&b| b as u32).sum::<u32>() as f32;
-    let sum3 = part3.iter().map(|&b| b as u32).sum::<u32>() as f32;
-    Vec3::new(sum1,sum2,sum3)
-}
-
-#[inline]
-pub fn screen_size_quad(dist: f32, fov: f32, dim: Vec4,) -> Vec2 {
-    let aspect_ratio = (dim.z as f32) /  (dim.w as f32);
-    let plane_height = 2.0 * dist * (fov / 2.0).tan();
-    let plane_width = plane_height * aspect_ratio;
-    //Half size is not perfect so mild adjustment are needed to fit screen.
-    Vec2::new(plane_width / 1.95, plane_height / 2.00)
-
-}
 
 #[inline]
 pub fn mask2(input: usize) -> usize {

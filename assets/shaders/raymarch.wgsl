@@ -35,12 +35,11 @@ struct GpuNode {
     first_child_idx: u32,
     material: u32,
 };
-struct Hit {
+struct RayEnd {
     pos: vec3<f32>,
     normal: vec3<f32>,
     material: u32,
-    is_hit: bool,
-    t: f32        // ray distance (important for ordering / depth buffer)
+    depth: f32     
 };
 
 
@@ -197,13 +196,18 @@ fn gradient(p: vec3<i32>) -> vec3<f32> {
     ));
 }
 
-fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
+fn view_z_to_ndc_depth(view_z: f32, near: f32, far: f32) -> f32 {
+    // Matches Bevy’s clip-space transform
+    return (far * view_z + near * far) / (view_z * (far - near));
+}
+
+fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> RayEnd {
     let bmin = push.root_min;
     let bmax = bmin + vec3<f32>(push.root_size);
 
     let tb = intersect_aabb(ray_o, ray_d, bmin, bmax);
     if (tb.x > tb.y || tb.y < 0.0) {
-        return Hit(vec3<f32>(0.0), vec3<f32>(0.0), 0u, false, 0.0);
+        return RayEnd(vec3<f32>(0.0), vec3<f32>(0.0), 0u, 0.0);
     }
 
     // start inside bounding box
@@ -230,7 +234,7 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
             // gradient normal
             let n = gradient(vec3<i32>(floor(p_cross)));
 
-            return Hit(p_cross, n, 1u, true, t);
+            return RayEnd(p_cross, n, 1u, t);
         }
 
         // step to next voxel boundary along ray (classic 3D DDA)
@@ -254,7 +258,7 @@ fn raymarch_svt(ray_o: vec3<f32>, ray_d: vec3<f32>) -> Hit {
         voxel = vec3<i32>(floor(pos));
     }
 
-    return Hit(vec3<f32>(0.0), vec3<f32>(0.0), 0u, false, t);
+    return RayEnd(vec3<f32>(0.0), vec3<f32>(0.0), 0u, 0.0);
 }
 
 fn get_camera_rotation_matrix() -> mat3x3<f32> {
@@ -302,15 +306,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Calculate the ray direction
     let dir_camera = screen_uv_to_ray_dir(uv, push.fov_y_deg, aspect);
     let ray_org = env_data.cam_pos + dir_camera*EPSILON;
-    let hit = raymarch_svt(ray_org, dir_camera);
-
-    var alpha = 0.0;
+    let ray = raymarch_svt(ray_org, dir_camera);
+    
     var color = vec3<f32>(1.0);
 
-   if (hit.is_hit) {
-        alpha = 1.0;
+   if (ray.depth != 0.0) {
       
-        let N = normalize(hit.normal);
+        let N = normalize(ray.normal);
         let L = normalize(-vec3<f32>(env_data.sunx,env_data.suny,env_data.sunz));
         var base_color = vec3<f32>(0.2, 0.7, 0.2); // default green
 
@@ -320,12 +322,16 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let ambient = 0.2;
  
         color = base_color * (ambient + lambert);
-        textureStore(normal, vec2<i32>(id.xy), vec4<f32>(hit.normal, alpha));
-        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(hit.t));
+        let ndc_depth = 1.0 - pow(ray.depth / MAX_DIST, 0.001);
+        textureStore(albedo, vec2<i32>(id.xy), vec4<f32>(color,1.0));
+        textureStore(normal, vec2<i32>(id.xy), vec4<f32>(N,1.0));
+        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(ndc_depth));
     }
-
-    textureStore(albedo, vec2<i32>(id.xy), vec4<f32>(color, alpha));
-    textureStore(normal, vec2<i32>(id.xy), vec4<f32>(0.0));
-    textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(MAX_DIST));
+    else {
+        textureStore(albedo, vec2<i32>(id.xy), vec4<f32>(0.0));
+        textureStore(normal, vec2<i32>(id.xy), vec4<f32>(0.0));
+        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(0.0));
+    }
+    
    
 }

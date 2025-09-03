@@ -19,7 +19,7 @@ struct PushConstants {
 
 @group(0) @binding(0) var albedo: texture_storage_2d<rgba8unorm, read>;
 @group(0) @binding(1) var normal: texture_storage_2d<rgba16float, read>;
-@group(0) @binding(2) var ray_depth: texture_storage_2d<r32float, read>;
+@group(0) @binding(2) var raster_depth: texture_storage_2d<r32float, read>;
 @group(0) @binding(3) var final_out: texture_storage_2d<rgba8unorm, write>;
 
 @group(1) @binding(0) var bevy_depth_tex: texture_depth_2d;
@@ -38,11 +38,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Load GBuffer data
     let albedo_val = textureLoad(albedo, coord);
     let normal_val = textureLoad(normal, coord);
-    let depth_val  = textureLoad(ray_depth, coord).r;
+    let depth_val  = textureLoad(raster_depth, coord).r;
 
     // Normalize depth (optional – depends on your ray_depth convention)
     // Here we assume ray_depth stores world distance
-    let depth_norm = clamp(depth_val / 100.0, 0.0, 1.0);
+    let depth_norm = clamp(depth_val / 500.0, 0.0, 1.0);
 
     // Tint albedo by depth (closer = full color, farther = darker)
     let shaded = albedo_val * (1.0 - depth_norm);

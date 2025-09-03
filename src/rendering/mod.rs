@@ -22,14 +22,12 @@ use bevy::{
 mod res;
 mod utils;
 mod raymarch;
-mod prefill_depth;
-mod raster; // So you can use draw raster
+mod raster;
 mod lighting;
 mod blit;
 
 
 pub struct RenderSystemPlugin;
-
 impl Plugin for RenderSystemPlugin {
     fn build(&self, app: &mut App) {
         //Extract resources into render
@@ -74,9 +72,11 @@ impl Plugin for RenderSystemPlugin {
                         .after(prepare_shared_bind_group)
                         .after(prepare_gbuffer),
 
-                    prefill_depth::prepare_bind_group
+               
+                    raster::prepare_bind_group
                         .after(prepare_shared_bind_group)
                         .after(prepare_gbuffer),
+                 
                  
                     lighting::prepare_bind_group
                         .after(prepare_shared_bind_group)
@@ -106,10 +106,7 @@ impl Plugin for RenderSystemPlugin {
                 Core3d,
                 raymarch::RaymarchRenderLabel,
             )
-            .add_render_graph_node::<ViewNodeRunner<prefill_depth::PrefillDepthNode>>(
-                Core3d,
-                prefill_depth::PrefillDepthRenderLabel,
-            )
+         
             .add_render_graph_node::<ViewNodeRunner<raster::RasterMainPassNode>>(
                 Core3d,
                 raster::RasterRenderLabel,
@@ -129,9 +126,8 @@ impl Plugin for RenderSystemPlugin {
             (
                 Node3d::EndPrepasses,
                 raymarch::RaymarchRenderLabel,
-                prefill_depth::PrefillDepthRenderLabel,
-                Node3d::EndMainPass,
                 raster::RasterRenderLabel,
+                  Node3d::EndMainPass,
                 lighting::LightingRenderLabel,
                 blit::BlitRenderLabel,
                 Node3d::Tonemapping,
@@ -147,7 +143,6 @@ impl Plugin for RenderSystemPlugin {
             .init_resource::<res::SharedLayouts>()
             .init_resource::<res::GBufferLayout>()
             .init_resource::<raymarch::RaymarchPipeline>()
-            .init_resource::<prefill_depth::PrefillDepthPipeline>()
             .init_resource::<raster::pipe::RasterPipeline>()
             .init_resource::<lighting::LightingPipeline>();
     }
@@ -164,8 +159,8 @@ fn prepare_gbuffer(
     mut targets: ResMut<res::GBufferTargets>,
 ) {
     let size = Extent3d {
-        width: settings.dim.z as u32,
-        height: settings.dim.w as u32,
+        width: settings.dim.z.round() as u32,
+        height: settings.dim.w.round() as u32,
         depth_or_array_layers: 1,
     };
 
@@ -207,13 +202,15 @@ fn prepare_gbuffer(
         mip_level_count: 1,
     };
 
-    let depth_attach_desc = TextureDescriptor {
-        label: Some("DepthAttach"),
+    let raster_depth_desc = TextureDescriptor {
+        label: Some("RasterDepthTexture"),
         size,
         sample_count: 1,
         dimension: TextureDimension::D2,
-        format: TextureFormat::Depth32Float,
-        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        format: TextureFormat::R32Float,
+        usage: TextureUsages::RENDER_ATTACHMENT
+            | TextureUsages::STORAGE_BINDING
+            | TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
         mip_level_count: 1,
     };
@@ -235,7 +232,7 @@ fn prepare_gbuffer(
     targets.albedo = Some(texture_cache.get(&render_device, albedo_desc));
     targets.normal = Some(texture_cache.get(&render_device, normal_desc));
     targets.ray_depth = Some(texture_cache.get(&render_device, ray_depth_desc));
-    targets.depth_attach = Some(texture_cache.get(&render_device, depth_attach_desc));
+    targets.raster_depth = Some(texture_cache.get(&render_device, raster_depth_desc));
     targets.final_out = Some(texture_cache.get(&render_device, output_desc));
 }
 
@@ -286,7 +283,7 @@ fn prepare_shared_bind_group(
                 push_constants.as_entire_binding(),
             )),
         );
-      
+
         bind_groups.shared = Some(bind_group_shared);
     } else {
         panic!("View not found");

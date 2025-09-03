@@ -1,10 +1,12 @@
+use crate::rendering::res;
+
 use super::shared;
 use bevy::{
     core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT, ecs::system::{lifetimeless::SRes, SystemParamItem}, pbr::{
         MeshInputUniform, MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey, MeshUniform, RenderMeshInstances
     }, prelude::*, render::{
         batching::{gpu_preprocessing::{IndirectParametersCpuMetadata, UntypedPhaseIndirectParametersBuffers}, GetBatchData, GetFullBatchData}, mesh::{allocator::MeshAllocator, MeshVertexBufferLayoutRef, RenderMesh}, render_asset::RenderAssets, render_resource::{
-            ColorTargetState, ColorWrites, CompareFunction, DepthStencilState, Face, FragmentState, FrontFace, MultisampleState, PolygonMode, PrimitiveState, RenderPipelineDescriptor, SpecializedMeshPipeline, SpecializedMeshPipelineError, TextureFormat, VertexState
+            BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthStencilState, Face, FragmentState, FrontFace, MultisampleState, PolygonMode, PrimitiveState, RenderPipelineDescriptor, SpecializedMeshPipeline, SpecializedMeshPipelineError, TextureFormat, VertexState
         }, sync_world::MainEntity
     }
 };
@@ -21,15 +23,15 @@ pub struct RasterPipeline {
     /// Stores the shader used for this pipeline directly on the pipeline.
     /// This isn't required, it's only done like this for simplicity.
     shader_handle: Handle<Shader>,
+    raster_layout: BindGroupLayout,
 }
 impl FromWorld for RasterPipeline {
     fn from_world(world: &mut World) -> Self {
-        // Load the shader
-        let shader_handle: Handle<Shader> =
-            world.resource::<AssetServer>().load(shared::RASTERIZE_PATH);
+
         Self {
             mesh_pipeline: MeshPipeline::from_world(world),
-            shader_handle,
+            shader_handle: world.resource::<AssetServer>().load(shared::RASTERIZE_PATH),
+            raster_layout: world.resource::<res::GBufferLayout>().raster_layout.clone()
         }
     }
 }
@@ -51,18 +53,83 @@ impl SpecializedMeshPipeline for RasterPipeline {
     
         // Define the vertex attributes based on a standard bevy [`Mesh`]
         let mut vertex_attributes = Vec::new();
-        if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
-            // Make sure this matches the shader location
+         let mut shader_defs = Vec::new();
+         shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
+       if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
+            shader_defs.push("VERTEX_POSITIONS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
+
         if layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
-            // Make sure this matches the shader location
+            shader_defs.push("VERTEX_NORMALS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
         }
+
+        if layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
+            shader_defs.push("VERTEX_UVS".into());
+            shader_defs.push("VERTEX_UVS_A".into());
+            vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
+        }
+
+        if layout.0.contains(Mesh::ATTRIBUTE_UV_1) {
+            shader_defs.push("VERTEX_UVS".into());
+            shader_defs.push("VERTEX_UVS_B".into());
+            vertex_attributes.push(Mesh::ATTRIBUTE_UV_1.at_shader_location(3));
+        }
+
+        if layout.0.contains(Mesh::ATTRIBUTE_TANGENT) {
+            shader_defs.push("VERTEX_TANGENTS".into());
+            vertex_attributes.push(Mesh::ATTRIBUTE_TANGENT.at_shader_location(4));
+        }
+
+        if layout.0.contains(Mesh::ATTRIBUTE_COLOR) {
+            shader_defs.push("VERTEX_COLORS".into());
+            vertex_attributes.push(Mesh::ATTRIBUTE_COLOR.at_shader_location(5));
+        }
+
         // This will automatically generate the correct `VertexBufferLayout` based on the vertex attributes
         let vertex_buffer_layout = layout.0.get_layout(&vertex_attributes)?;
-   
 
+        if mesh_key.msaa_samples() > 1 {
+            shader_defs.push("MULTISAMPLED".into());
+        };
+
+        if mesh_key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION) {
+            shader_defs.push("SCREEN_SPACE_AMBIENT_OCCLUSION".into());
+        }
+
+        if mesh_key.contains(MeshPipelineKey::NORMAL_PREPASS) {
+            shader_defs.push("NORMAL_PREPASS".into());
+        }
+
+        if mesh_key.contains(MeshPipelineKey::DEPTH_PREPASS) {
+            shader_defs.push("DEPTH_PREPASS".into());
+        }
+
+         if mesh_key
+            .intersects(MeshPipelineKey::MOTION_VECTOR_PREPASS | MeshPipelineKey::DEFERRED_PREPASS)
+        {
+            shader_defs.push("MOTION_VECTOR_PREPASS_OR_DEFERRED_PREPASS".into());
+        }
+
+        if mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS) {
+            shader_defs.push("MOTION_VECTOR_PREPASS".into());
+        }
+
+        if mesh_key.contains(MeshPipelineKey::DEFERRED_PREPASS) {
+            shader_defs.push("DEFERRED_PREPASS".into());
+        }
+        if mesh_key.intersects(
+            MeshPipelineKey::NORMAL_PREPASS
+                | MeshPipelineKey::MOTION_VECTOR_PREPASS
+                | MeshPipelineKey::DEFERRED_PREPASS,
+        ) {
+            shader_defs.push("PREPASS_FRAGMENT".into());
+        }
+
+        if mesh_key.contains(MeshPipelineKey::VISIBILITY_RANGE_DITHER) {
+            shader_defs.push("VISIBILITY_RANGE_DITHER".into());
+        }
         Ok(RenderPipelineDescriptor {
             label: Some("RasterPipeline".into()),
             layout: vec![
@@ -72,18 +139,19 @@ impl SpecializedMeshPipeline for RasterPipeline {
                     .clone(),
                 // Bind group 1 is the mesh uniform
                 self.mesh_pipeline.mesh_layouts.model_only.clone(),
+                self.raster_layout.clone()
             ],
             push_constant_ranges: vec![],
             vertex: VertexState {
                 shader: self.shader_handle.clone(),
-                shader_defs: vec![],
+                shader_defs: shader_defs.clone(),
                 entry_point: "vertex".into(),
                 // Customize how to store the meshes' vertex attributes in the vertex buffer
                 buffers: vec![vertex_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
-                shader_defs: vec![],
+                shader_defs: shader_defs,
                 entry_point: "fragment".into(),
                 targets: vec![
                     Some(ColorTargetState {
@@ -112,13 +180,14 @@ impl SpecializedMeshPipeline for RasterPipeline {
             },
             // Note that if your view has no depth buffer this will need to be
             // changed.
-            depth_stencil: Some(DepthStencilState {
+             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
                 depth_write_enabled: true,
-                depth_compare: CompareFunction::LessEqual,
+                depth_compare: CompareFunction::GreaterEqual,
                 stencil: default(),
                 bias: default(),
             }),
+
             // It's generally recommended to specialize your pipeline for MSAA,
             // but it's not always possible
             multisample: MultisampleState {

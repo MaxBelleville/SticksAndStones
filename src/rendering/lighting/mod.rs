@@ -46,7 +46,7 @@ impl ViewNode for LightingNode {
                 .clone(),
             pipeline.lighting_pipeid,
         );
-
+        // info!("lighting drew fullscreen triangle");
         Ok(())
     }
 }
@@ -63,7 +63,7 @@ pub fn prepare_bind_group(
         &BindGroupEntries::sequential((
             &targets.albedo.as_ref().unwrap().default_view,
             &targets.normal.as_ref().unwrap().default_view,
-            &targets.ray_depth.as_ref().unwrap().default_view,
+            &targets.raster_depth.as_ref().unwrap().default_view,
             &targets.final_out.as_ref().unwrap().default_view,
         )),
     ));
