@@ -1,18 +1,15 @@
-
-
-use bevy::{platform::collections::HashSet, prelude::*, render::{extract_component::ExtractComponent, extract_resource::ExtractResource}, window::{PresentMode, WindowMode}};
-use noiz::prelude::*;
-
+use bevy::{
+    platform::collections::HashSet,
+    prelude::*,
+    render::{extract_component::ExtractComponent, extract_resource::ExtractResource},
+    window::{PresentMode, WindowMode},
+};
 
 use crate::shared;
 
-use super::{maths,contree,GameState};
+use super::{GameState, contree, maths};
 
-
-
-
-
-#[derive(Resource, Debug, Clone,ExtractResource)]
+#[derive(Resource, Debug, Clone, ExtractResource)]
 pub struct WindowManagerSettings {
     pub display_factor: f32,
     pub dim: Vec4,
@@ -22,26 +19,28 @@ pub struct WindowManagerSettings {
 
 impl Default for WindowManagerSettings {
     fn default() -> Self {
-        let display_fact = 2.0;
-        let (width, height) =  (1366.0 / display_fact, 768.0 / display_fact);
+        let display_fact = 3.0;
+        let (width, height) = (1366.0 / display_fact, 768.0 / display_fact);
         Self {
             display_factor: display_fact,
-            dim: vec4(0.0,0.0, width, height),
-            window_mode: WindowMode::Fullscreen(MonitorSelection::Current, VideoModeSelection::Current),
+            dim: vec4(0.0, 0.0, width, height),
+            window_mode: WindowMode::Fullscreen(
+                MonitorSelection::Current,
+                VideoModeSelection::Current,
+            ),
             present_mode: PresentMode::AutoVsync,
         }
     }
 }
 
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Hash,ExtractResource)]
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Hash, ExtractResource)]
 pub struct ExtractedGameState(pub GameState);
 
-#[derive(Resource,Default,Clone,ExtractResource)]
+#[derive(Resource, Default, Clone, ExtractResource)]
 pub struct WorldData {
     pub contree: contree::Contree,
     pub seed: Option<u32>,
     pub proccessing_chunks: HashSet<IVec3>,
-    pub noise: Noise<common_noise::Fbm<MixCellGradients<OrthoGrid, Smoothstep, QuickGradients>>>,
     pub gpu_data: Vec<i32>,
     pub file_data: Vec<u8>,
     pub root_size: f32,
@@ -54,32 +53,27 @@ pub struct WorldData {
 #[extract_component_filter(With<Camera>)]
 pub struct ComputeCamera;
 
-#[derive(Resource, Clone, Copy,ExtractResource,Default)]
+#[derive(Resource, Clone, Copy, ExtractResource, Default)]
 pub struct AtmosphereData {
     pub sun_dir: Vec3,
     pub time: f32,
 }
 
-
 #[derive(Clone, Copy, Default, Debug)]
 pub struct VoxelVec {
-    pub pos: IVec3,     
+    pub pos: IVec3,
     pub mat: Option<u8>,
-    pub level: u8, 
-    pub morton: usize
-} 
+    pub level: u8,
+    pub morton: usize,
+}
 
 impl VoxelVec {
-     pub fn new(pos:IVec3,mat:Option<u8>,level:u8)->Self {
+    pub fn new(pos: IVec3, mat: Option<u8>, level: u8) -> Self {
         Self {
             pos,
             mat,
             level,
-            morton: shared::maths::ileavechunk(
-                pos.x as u32,
-                pos.y as u32,
-                pos.z as u32,
-            )
+            morton: shared::maths::ileavechunk(pos.x as u32, pos.y as u32, pos.z as u32),
         }
     }
 
@@ -97,20 +91,17 @@ impl VoxelVec {
     }
 
     pub fn normalize(&mut self, size: i32) {
-        self.pos+= IVec3::splat(size/ 2);
+        self.pos += IVec3::splat(size / 2);
         self.update_morton();
     }
 
-    pub fn chunk_to_world(&self, chunk_pos:IVec3) -> IVec3 {
+    pub fn chunk_to_world(&self, chunk_pos: IVec3) -> IVec3 {
         (chunk_pos * 64) + self.pos
     }
 
     pub fn update_morton(&mut self) {
-        self.morton = shared::maths::ileavechunk(
-            self.pos.x as u32,
-            self.pos.y as u32,
-            self.pos.z as u32,
-        );
+        self.morton =
+            shared::maths::ileavechunk(self.pos.x as u32, self.pos.y as u32, self.pos.z as u32);
     }
 }
 

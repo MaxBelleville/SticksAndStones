@@ -13,11 +13,10 @@ opt-level = 3
 
 [dependencies]
 bevy = { version = "0.16.1", features = ["bevy_render", "dynamic_linking","bevy_pbr"] }
-bevy_atmosphere = "=0.13.0"
 bevy_enhanced_input = "0.14.1"
 bevy_lunex = { git = "https://github.com/bytestring-net/bevy_lunex" }
 
 bytemuck = "1.23.1"
-noiz = "0.2.0"
 nonmax = "0.5.5"
+simdnoise = "3.1.6"
 twox-hash = "2.1.1"

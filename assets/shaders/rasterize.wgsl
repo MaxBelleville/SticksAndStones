@@ -7,14 +7,14 @@
     prepass_utils,
 }
 
+@group(0) @binding(0) var albedo: texture_storage_2d<rgba8unorm, read>;
+@group(0) @binding(1) var normal: texture_storage_2d<rgba16float, read>;
+@group(0) @binding(2) var raster_depth: texture_storage_2d<r32float, read>;
+@group(0) @binding(3) var final_out: texture_storage_2d<rgba8unorm, write>;
 
-
-
-const MAX_STEPS: u32 = 1024u;
-const EPSILON: f32 = 1e-5;
-const MAX_DIST: f32 = 2000.0;
-
-
+#import "shaders/shared.wgsl"::{
+    MAX_STEPS,MAX_DIST,EPSILON
+}
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -92,7 +92,7 @@ fn fragment(in: VertexOutput)-> FragmentOutput
    let motion_vec = prepass_utils::prepass_motion_vector(in.position, 0);
 
     // Reproject UV backwards into where this pixel came from last frame
-    let prev_uv = uv - motion_vec;
+    let prev_uv = uv - motion_vec*0.9;
 
     let color = textureSample(color_tex, color_tex_sampler, prev_uv);
    

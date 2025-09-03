@@ -9,7 +9,6 @@ use bevy::{
     prelude::*,
     render::render_resource::TextureUsages,
 };
-use bevy_atmosphere::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
 use bevy_lunex::CameraTextureRenderConstructor;
@@ -26,23 +25,8 @@ struct CycleTimer(Timer);
 
 impl Plugin for EnviromentPlugin {
     fn build(&self, app: &mut App) {
-        let atmo_model = AtmosphereModel::new(Nishita {
-            sun_position: Vec3::new(0., 0., -1.),
-            rayleigh_coefficient: Vec3::new(5.8e-6, 13.5e-6, 22.0e-6),
-            mie_scale_height: 1200.0,
-            mie_coefficient: 1.7e-5,
-            mie_direction: 0.875,
-            sun_intensity: 10.0,
-            ray_origin: Vec3::new(0.0, 6_371_000.0 + 10.0, 0.0),
-            ..default()
-        });
 
-        app.add_plugins(AtmospherePlugin).insert_resource(atmo_model)
-        .insert_resource(AtmosphereSettings {
-            resolution: 256,
-            dithering: true,
-            ..default()
-        })
+        app
         .insert_resource(CycleTimer(Timer::new(
             std::time::Duration::from_millis(100),
             TimerMode::Repeating,
@@ -122,7 +106,6 @@ fn setup_enviroment(
                 ..default()
             }),
             shared::res::ComputeCamera,
-            AtmosphereCamera::default(),
             Camera::clear_render_to(world.camera.clone()).with_order(-1),
             Transform::from_xyz(0., 32., 0.).looking_at(vec3(10.0,32.0,0.0),Dir3::Y),
             Msaa::Off,
@@ -134,15 +117,12 @@ fn setup_enviroment(
 }
 
 
-
-
 fn update_time(time: Res<Time>, mut atmo_data: ResMut<shared::res::AtmosphereData>) {
     atmo_data.time += time.delta_secs();
 }
 
 // We can edit the Atmosphere resource and it will be updated automatically
 fn daylight_cycle(
-    mut atmosphere: AtmosphereMut<Nishita>,
     mut query: Query<(&mut Transform, &mut DirectionalLight), With<shared::components::Sun>>,
     mut timer: ResMut<CycleTimer>,
     mut atmo_data: ResMut<shared::res::AtmosphereData>,
@@ -156,8 +136,7 @@ fn daylight_cycle(
 
         let sun_dir = Vec3::new(theta.cos(), theta.sin(), 0.3 * theta.cos()).normalize();
         atmo_data.sun_dir = sun_dir;
-
-        atmosphere.sun_position = sun_dir;
+        
         if let Some(Ok((mut light_trans, mut directional))) = query.single_mut().into() {
             // Light points opposite to sun position
             light_trans.rotation = Quat::from_rotation_arc(Vec3::Y, -sun_dir);
