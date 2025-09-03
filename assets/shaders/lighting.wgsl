@@ -16,16 +16,20 @@ struct PushConstants {
     root_min: vec3<f32>,
     mode: f32,
 };
+const MAX_STEPS: u32 = 1024u;
+const EPSILON: f32 = 1e-5;
+const MAX_DIST: f32 = 2000.0;
 
 @group(0) @binding(0) var albedo: texture_storage_2d<rgba8unorm, read>;
 @group(0) @binding(1) var normal: texture_storage_2d<rgba16float, read>;
 @group(0) @binding(2) var raster_depth: texture_storage_2d<r32float, read>;
 @group(0) @binding(3) var final_out: texture_storage_2d<rgba8unorm, write>;
 
-@group(1) @binding(0) var bevy_depth_tex: texture_depth_2d;
-@group(1) @binding(1) var<uniform> env_data: EnviromentData;
-@group(1) @binding(2) var<storage, read> svt_data: array<i32>;
-@group(1) @binding(3) var<uniform> push: PushConstants;
+@group(1) @binding(0) var depth_tex: texture_depth_2d;
+@group(1) @binding(1) var motion_tex: texture_2d<f32>;
+@group(1) @binding(2) var<uniform> env_data: EnviromentData;
+@group(1) @binding(3) var<storage, read> svt_data: array<i32>;
+@group(1) @binding(4) var<uniform> push: PushConstants;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -40,13 +44,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let normal_val = textureLoad(normal, coord);
     let depth_val  = textureLoad(raster_depth, coord).r;
 
-    // Normalize depth (optional – depends on your ray_depth convention)
-    // Here we assume ray_depth stores world distance
-    let depth_norm = clamp(depth_val / 500.0, 0.0, 1.0);
-
     // Tint albedo by depth (closer = full color, farther = darker)
-    let shaded = albedo_val * (1.0 - depth_norm);
+    let shaded = albedo_val * (1.0 - depth_val);
 
     // Write to output (force alpha=1)
-    textureStore(final_out, coord, vec4<f32>(albedo_val));
+    textureStore(final_out, coord, vec4<f32>(shaded));
 }

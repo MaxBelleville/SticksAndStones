@@ -2,11 +2,19 @@
     mesh_functions,
     mesh_bindings,
     mesh_view_bindings::view,
-    forward_io::{Vertex, VertexOutput},
+    forward_io::{Vertex,VertexOutput},
     view_transformations,
     prepass_utils,
-    utils::coords_to_viewport_uv,
 }
+
+
+
+
+const MAX_STEPS: u32 = 1024u;
+const EPSILON: f32 = 1e-5;
+const MAX_DIST: f32 = 2000.0;
+
+
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -25,7 +33,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 
     #ifdef VERTEX_POSITIONS
         out.world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
-        out.position = view_transformations::position_world_to_clip(out.world_position.xyz);
+        out.position = view_transformations::position_world_to_clip(out.world_position.xyz); 
     #endif
 
     #ifdef VERTEX_UVS_A
@@ -79,20 +87,38 @@ fn fragment(in: VertexOutput)-> FragmentOutput
 {
     var out: FragmentOutput;
 
-    let uv = coords_to_viewport_uv(in.position.xy,view.viewport);
+    let uv = view_transformations::frag_coord_to_uv(in.position.xy);
+        // Motion vector in screen space (normalized to viewport)
+   let motion_vec = prepass_utils::prepass_motion_vector(in.position, 0);
 
-    let color = textureSample(color_tex, color_tex_sampler, uv);
-    let ray_depth =  textureLoad(ray_depth_tex, vec2<i32>(in.position.xy)).r;
+    // Reproject UV backwards into where this pixel came from last frame
+    let prev_uv = uv - motion_vec;
 
-    if(ray_depth!=0.0&&ray_depth>=in.position.z) {
+    let color = textureSample(color_tex, color_tex_sampler, prev_uv);
+   
+
+    let dims: vec2<u32> = textureDimensions(ray_depth_tex);
+    //Probably not needed but just to be safe clamp depth
+    let texel_f = uv * vec2<f32>(vec2<i32>(dims));
+    let texel_x = clamp(u32(floor(texel_f.x)), 0u, dims.x - 1);
+    let texel_y = clamp(u32(floor(texel_f.y)), 0u, dims.y - 1);
+    let tex_coord = vec2<u32>(texel_x, texel_y);
+    let ray_depth =  textureLoad(ray_depth_tex, tex_coord).r;
+
+    let view_pos = view_transformations::position_world_to_view(in.world_position.xyz);
+    let linear_depth = -view_pos.z;              // positive forward
+    var raster_depth = linear_depth / MAX_DIST;
+    let depth_bias = 0.001 + 0.002 * length(motion_vec*1.5);
+    if(ray_depth!=1.0&&ray_depth<raster_depth+depth_bias) {
         discard;
     }
-
-    out.albedo =  color;
+ 
+    out.albedo = color;
+    
     // World-space normal, remapped to 0..1 for storage
     out.normal  = vec4(normalize(in.world_normal) * 0.5 + 0.5,1.0);
 
-    out.raster_depth = in.position.z;
+    out.raster_depth = raster_depth;
 
     return out;
 }

@@ -10,7 +10,7 @@ pub struct GBufferTargets {
     pub albedo: Option<CachedTexture>,
     pub normal: Option<CachedTexture>,
     pub ray_depth: Option<CachedTexture>,
-    pub raster_depth: Option<CachedTexture>,
+    pub combined_depth: Option<CachedTexture>,
     pub final_out: Option<CachedTexture>,
 }
 
@@ -73,6 +73,10 @@ impl FromWorld for GBufferLayout {
                         TextureFormat::R32Float,
                         StorageTextureAccess::WriteOnly,
                     ),
+                    binding_types::texture_storage_2d(
+                        TextureFormat::R32Float,
+                        StorageTextureAccess::WriteOnly,
+                    ),
                 ),
             ),
         );
@@ -115,6 +119,7 @@ impl FromWorld for SharedLayouts {
                 ShaderStages::COMPUTE,
                 (
                     binding_types::texture_depth_2d(),
+                    binding_types::texture_2d(TextureSampleType::Float { filterable: false }),
                     binding_types::uniform_buffer::<utils::EnviromentData>(false),
                     binding_types::storage_buffer_read_only::<i32>(false),
                     binding_types::uniform_buffer::<utils::PushConstants>(false),

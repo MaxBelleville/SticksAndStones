@@ -80,7 +80,7 @@ impl ViewNode for RasterMainPassNode {
             Some(t) => &t.default_view,
             None => return Ok(()),
         };
-        let raster_depth_view = match &gbuffer.raster_depth {
+        let combined_depth_view = match &gbuffer.combined_depth {
             Some(t) => &t.default_view,
             None => return Ok(()),
         }; // depth_color as R32 (or separate)
@@ -104,7 +104,7 @@ impl ViewNode for RasterMainPassNode {
                 },
             }),
             Some(RenderPassColorAttachment {
-                view: raster_depth_view,
+                view: combined_depth_view,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Load, // depth_color clear (not used visually)

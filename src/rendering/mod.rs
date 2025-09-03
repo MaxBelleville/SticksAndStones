@@ -1,22 +1,12 @@
 use super::shared;
 use bevy::{
-    core_pipeline::core_3d::graph::{Core3d, Node3d},
+    core_pipeline::{core_3d::graph::{Core3d, Node3d}, prepass::ViewPrepassTextures},
     pbr::MeshPipeline,
     prelude::*,
     render::{
-        Render, RenderApp, RenderDebugFlags, RenderSet,
-        batching::gpu_preprocessing::batch_and_prepare_sorted_render_phase,
-        extract_component::ExtractComponentPlugin,
-        extract_resource::ExtractResourcePlugin,
-        render_graph::{RenderGraphApp, ViewNodeRunner},
-        render_phase::{
-            AddRenderCommand, DrawFunctions, SortedRenderPhasePlugin, ViewSortedRenderPhases,
-            sort_phase_system,
-        },
-        render_resource::*,
-        renderer::RenderDevice,
-        texture::TextureCache,
-        view::{ExtractedView, ViewDepthTexture},
+        batching::gpu_preprocessing::batch_and_prepare_sorted_render_phase, extract_component::ExtractComponentPlugin, extract_resource::ExtractResourcePlugin, render_graph::{RenderGraphApp, ViewNodeRunner}, render_phase::{
+            sort_phase_system, AddRenderCommand, DrawFunctions, SortedRenderPhasePlugin, ViewSortedRenderPhases
+        }, render_resource::*, renderer::RenderDevice, texture::TextureCache, view::ExtractedView, Render, RenderApp, RenderDebugFlags, RenderSet
     },
 };
 mod res;
@@ -149,7 +139,7 @@ impl Plugin for RenderSystemPlugin {
 }
 
 fn in_extracted_game_state(resource: Res<shared::res::ExtractedGameState>) -> bool {
-    resource.0 == shared::GameState::InGame
+    resource.0 == shared::GameState::InGame || resource.0 == shared::GameState::Paused
 }
 
 fn prepare_gbuffer(
@@ -202,8 +192,8 @@ fn prepare_gbuffer(
         mip_level_count: 1,
     };
 
-    let raster_depth_desc = TextureDescriptor {
-        label: Some("RasterDepthTexture"),
+    let combined_depth_desc = TextureDescriptor {
+        label: Some("CombinedDepthTexture"),
         size,
         sample_count: 1,
         dimension: TextureDimension::D2,
@@ -232,21 +222,28 @@ fn prepare_gbuffer(
     targets.albedo = Some(texture_cache.get(&render_device, albedo_desc));
     targets.normal = Some(texture_cache.get(&render_device, normal_desc));
     targets.ray_depth = Some(texture_cache.get(&render_device, ray_depth_desc));
-    targets.raster_depth = Some(texture_cache.get(&render_device, raster_depth_desc));
+    targets.combined_depth = Some(texture_cache.get(&render_device, combined_depth_desc));
     targets.final_out = Some(texture_cache.get(&render_device, output_desc));
 }
 
 fn prepare_shared_bind_group(
     shared: Res<res::SharedLayouts>,
-    views: Query<(&ExtractedView, &ViewDepthTexture), With<shared::res::ComputeCamera>>,
+    views: Query<(&ExtractedView, &ViewPrepassTextures), With<shared::res::ComputeCamera>>,
     settings: Res<shared::res::WindowManagerSettings>,
     world_data: Res<shared::res::WorldData>,
     mut bind_groups: ResMut<res::RenderBindGroups>,
     atmo_data: Res<shared::res::AtmosphereData>,
     render_device: Res<RenderDevice>,
 ) {
-    if let Ok((view, depth_texture)) = views.single() {
+    if let Ok((view, prepass_t)) = views.single() {
         //Prepares buffers will be used to bind data later.
+        let Some(depth) = prepass_t.depth_view() else {
+            panic!("Depth prepass not found");
+        };
+         let Some(motion) = prepass_t.motion_vectors_view() else {
+            panic!("Motion prepass not found");
+        };
+
 
         let cam_pos = view.world_from_view.translation();
         let rot = Mat3::from_quat(view.world_from_view.rotation());
@@ -277,7 +274,8 @@ fn prepare_shared_bind_group(
             "shared_bind",
             &shared.layout,
             &BindGroupEntries::sequential((
-                depth_texture.view(),
+                depth,
+                motion,
                 camera_buffer.as_entire_binding(),
                 svt_buffer.as_entire_binding(),
                 push_constants.as_entire_binding(),

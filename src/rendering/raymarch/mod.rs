@@ -63,6 +63,7 @@ pub fn prepare_bind_group(
             &targets.albedo.as_ref().unwrap().default_view,
             &targets.normal.as_ref().unwrap().default_view,
             &targets.ray_depth.as_ref().unwrap().default_view,
+            &targets.combined_depth.as_ref().unwrap().default_view,
         )),
     ));
 

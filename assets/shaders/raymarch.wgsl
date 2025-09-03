@@ -24,11 +24,13 @@ const MAX_DIST: f32 = 2000.0;
 @group(0) @binding(0) var albedo: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(1) var normal: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(2) var ray_depth: texture_storage_2d<r32float, write>;
+@group(0) @binding(3) var combined_depth: texture_storage_2d<r32float, write>;
 
-@group(1) @binding(0) var bevy_depth_tex: texture_depth_2d;
-@group(1) @binding(1) var<uniform> env_data: EnviromentData;
-@group(1) @binding(2) var<storage, read> svt_data: array<i32>;
-@group(1) @binding(3) var<uniform> push: PushConstants;
+@group(1) @binding(0) var depth_tex: texture_depth_2d;
+@group(1) @binding(1) var motion_tex: texture_2d<f32>;
+@group(1) @binding(2) var<uniform> env_data: EnviromentData;
+@group(1) @binding(3) var<storage, read> svt_data: array<i32>;
+@group(1) @binding(4) var<uniform> push: PushConstants;
 
 struct GpuNode {
     mask: vec2<u32>,
@@ -322,15 +324,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let ambient = 0.2;
  
         color = base_color * (ambient + lambert);
-        let ndc_depth = 1.0 - pow(ray.depth / MAX_DIST, 0.001);
+        let linear_depth = ray.depth / MAX_DIST;
         textureStore(albedo, vec2<i32>(id.xy), vec4<f32>(color,1.0));
         textureStore(normal, vec2<i32>(id.xy), vec4<f32>(N,1.0));
-        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(ndc_depth));
+        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(linear_depth));
+        textureStore(combined_depth, vec2<i32>(id.xy), vec4<f32>(linear_depth));
     }
     else {
         textureStore(albedo, vec2<i32>(id.xy), vec4<f32>(0.0));
         textureStore(normal, vec2<i32>(id.xy), vec4<f32>(0.0));
-        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(0.0));
+        textureStore(ray_depth, vec2<i32>(id.xy), vec4<f32>(1.0));
+        textureStore(combined_depth, vec2<i32>(id.xy), vec4<f32>(1.0));
     }
     
    
