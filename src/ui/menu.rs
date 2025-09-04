@@ -116,7 +116,32 @@ fn main_menu_setup(
                             ui.spawn((
                                 // For text always use window layout to position it
                                 UiLayout::window()
-                                    .pos((Rh(40.0), Rl(50.0)))
+                                    .pos((Rh(75.0), Rl(48.0)))
+                                    .anchor(Anchor::CenterLeft)
+                                    .pack(),
+                                     
+                                UiColor::new(vec![
+                                    (UiBase::id(), Color::BLACK),
+                                    (UiHover::id(), Color::srgba(15.0/255.0,42.0/255.0,63.0/255.0,1.0)),
+                                ]),
+                           
+                                // You can control the size of the text
+                                UiTextSize::from(Rh(120.0)),
+                                // You can attach text like this
+                                Text2d::new(button.to_ascii_uppercase()),
+                                TextFont {
+                                    font: asset_server.load("fonts/monogram.ttf"),
+                                    font_size: 72.0,
+                                    ..default()
+                                },
+                                // Make sure it does not cover the bounding zone of parent
+                                Pickable::IGNORE,
+                            ));
+                            // Spawn the text
+                            ui.spawn((
+                                // For text always use window layout to position it
+                                UiLayout::window()
+                                    .pos((Rh(75.0), Rl(42.0)))
                                     .anchor(Anchor::CenterLeft)
                                     .pack(),
                                 UiColor::new(vec![
@@ -125,7 +150,7 @@ fn main_menu_setup(
                                 ]),
                             UiHover::new().forward_speed(8.0).backward_speed(10.0),
                                 // You can control the size of the text
-                                UiTextSize::from(Rh(72.0)),
+                                UiTextSize::from(Rh(120.0)),
                                 // You can attach text like this
                                 Text2d::new(button.to_ascii_uppercase()),
                                 TextFont {

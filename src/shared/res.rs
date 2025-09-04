@@ -19,7 +19,7 @@ pub struct WindowManagerSettings {
 
 impl Default for WindowManagerSettings {
     fn default() -> Self {
-        let display_fact = 3.0;
+        let display_fact = 2.0;
         let (width, height) = (1366.0 / display_fact, 768.0 / display_fact);
         Self {
             display_factor: display_fact,
