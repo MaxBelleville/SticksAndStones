@@ -1,18 +1,15 @@
+use bevy::anti_alias::fxaa::Fxaa;
 use bevy::asset::RenderAssetUsages;
-use bevy::core_pipeline::fxaa::Fxaa;
+use bevy::camera::RenderTarget;
 use bevy::core_pipeline::prepass::MotionVectorPrepass;
-use bevy::pbr::CascadeShadowConfigBuilder;
+use bevy::light::light_consts::lux;
+use bevy::light::CascadeShadowConfigBuilder;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::{
     core_pipeline::prepass::DepthPrepass,
-    pbr::light_consts::*,
     prelude::*,
     render::render_resource::TextureUsages,
 };
-use bevy_enhanced_input::prelude::*;
-
-use bevy_lunex::CameraTextureRenderConstructor;
-
 
 use super::player;
 
@@ -100,13 +97,18 @@ fn setup_enviroment(
                     .into(),
                 ..default()
             },
-            Actions::<player::PlayerCam>::default(), // Marks camera as for the flycam plugin
+          
             Projection::from(PerspectiveProjection {
                 fov: fov_y,
                 ..default()
             }),
             shared::res::ComputeCamera,
-            Camera::clear_render_to(world.camera.clone()).with_order(-1),
+            Camera {
+                target: RenderTarget::Image(world.render.clone().into()),
+                clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                order: -1,
+                ..Default::default()
+            },
             Transform::from_xyz(0., 32., 0.).looking_at(vec3(10.0,32.0,0.0),Dir3::Y),
             Msaa::Off,
             DepthPrepass,
@@ -130,7 +132,7 @@ fn daylight_cycle(
 ) {
     timer.0.tick(time.delta());
 
-    if timer.0.finished() {
+    if timer.0.is_finished() {
         let t = atmo_data.time / 240.0;
         let theta = t % std::f32::consts::TAU;
 

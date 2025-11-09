@@ -12,9 +12,7 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-bevy = { version = "0.16.1", features = ["bevy_render", "dynamic_linking","bevy_pbr"] }
-bevy_enhanced_input = "0.14.1"
-bevy_lunex = { git = "https://github.com/bytestring-net/bevy_lunex" }
+bevy = { version = "0.17.2", features = ["bevy_render", "dynamic_linking", "bevy_pbr"] }
 
 bytemuck = "1.23.1"
 nonmax = "0.5.5"

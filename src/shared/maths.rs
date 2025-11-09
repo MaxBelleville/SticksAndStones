@@ -26,7 +26,6 @@ pub fn ileavechunk(x: u32, y: u32, z: u32) -> usize {
     (part1by2(x) | (part1by2(y) << 1) | (part1by2(z) << 2)) as usize
 }
 
-
 #[inline]
 pub fn child_index(morton: usize, shift: usize) -> usize {
     // bit layout at (morton >> shift) low 6 bits:
@@ -47,8 +46,8 @@ pub fn child_index(morton: usize, shift: usize) -> usize {
 
 // Extent in voxels per axis that a lod-level covers (level=0 -> 1, level=1 -> 4, ...)
 #[inline]
-pub fn level_extent(level: u8) -> usize {
-    1 << (2 * level as usize) // 4^level
+pub fn level_extent(level: usize) -> usize {
+    1 << (2 * level) // 4^level
 }
 
 #[inline]
@@ -111,15 +110,28 @@ pub fn estimate_nodes(voxel_count: usize, chunk_size: usize) -> usize {
     let n_upper = l_max + i_max;
     n_upper.max(1 + 64)                     // ensure room for your initial alloc
 }
-
+#[inline]
+pub fn get_children_from_mask(child_mask:u64)->Vec<usize> {
+    let mut children = Vec::new();
+    for i in 0..64 {
+        if child_in_mask(child_mask,i) {
+            children.push(i);
+        }
+    }
+    children
+}
+#[inline]
+pub fn child_in_mask(child_mask:u64, child_idx:usize)->bool {
+    child_mask & 1 << child_idx != 0
+}
 
 #[inline]
-pub fn deileave3(idx: usize,child_size: i32) -> IVec3 {
+pub fn deileave3(idx: usize,child_size: usize) -> IVec3 {
     let xi = mask2(idx >> 4) as i32;
     let yi = mask2(idx >> 2) as i32;
     let zi = mask2(idx) as i32;
 
-    IVec3::new(xi,yi,zi)* child_size
+    IVec3::new(xi,yi,zi)* child_size as i32
 }
 #[inline]
 pub fn pathtrace_to_world_pos(
@@ -127,7 +139,7 @@ pub fn pathtrace_to_world_pos(
     paths: &[u8],
 ) -> IVec3 {
     let mut pos =  IVec3::splat(-(root_size as i32) / 2);
-    let mut size = root_size as i32;
+    let mut size = root_size ;
 
     for &path in paths {
         let i = path;

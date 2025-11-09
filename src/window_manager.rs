@@ -1,5 +1,5 @@
 use bevy::{
-    prelude::*, window::{CursorGrabMode, PrimaryWindow, WindowMode}, winit::WinitWindows
+    prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
 };
 
 use super::shared;
@@ -15,17 +15,17 @@ impl Plugin for WindowManagerPlugin {
     }
 }
 
-fn disable_cursor(mut windows: Query<(&mut Window, Option<&PrimaryWindow>)>) {
-    if let Some((mut window, _)) = windows.iter_mut().find(|(_, primary)| primary.is_some()) {
-        window.cursor_options.grab_mode = CursorGrabMode::Confined;
-        window.cursor_options.visible = false;
+fn disable_cursor(mut cursoropts: Query<(&mut CursorOptions, Option<&PrimaryWindow>)>) {
+    if let Some((mut cursor, _)) = cursoropts.iter_mut().find(|(_, primary)| primary.is_some()) {
+        cursor.grab_mode = CursorGrabMode::Confined;
+        cursor.visible = false;
     }
 }
 
-fn enable_cursor(mut windows: Query<(&mut Window, Option<&PrimaryWindow>)>) {
-    if let Some((mut window, _)) = windows.iter_mut().find(|(_, primary)| primary.is_some()) {
-        window.cursor_options.grab_mode = CursorGrabMode::None;
-        window.cursor_options.visible = true;
+fn enable_cursor(mut cursoropts: Query<(&mut CursorOptions, Option<&PrimaryWindow>)>) {
+    if let Some((mut cursor, _)) = cursoropts.iter_mut().find(|(_, primary)| primary.is_some()) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
     }
 }
 

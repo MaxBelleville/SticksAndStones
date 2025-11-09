@@ -5,9 +5,9 @@ use bevy::{
     window::{PresentMode, WindowMode},
 };
 
-use crate::shared;
 
-use super::{GameState, contree, maths};
+
+use super::{GameState,contree, maths};
 
 #[derive(Resource, Debug, Clone, ExtractResource)]
 pub struct WindowManagerSettings {
@@ -60,34 +60,39 @@ pub struct AtmosphereData {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-pub struct VoxelVec {
+pub struct Voxel {
     pub pos: IVec3,
-    pub mat: Option<u8>,
+    pub mat:u8,
     pub level: u8,
     pub morton: usize,
 }
 
-impl VoxelVec {
-    pub fn new(pos: IVec3, mat: Option<u8>, level: u8) -> Self {
+impl Voxel {
+    pub fn new(pos: IVec3, mat: u8, level: u8) -> Self {
         Self {
             pos,
             mat,
             level,
-            morton: shared::maths::ileavechunk(pos.x as u32, pos.y as u32, pos.z as u32),
+            morton: maths::ileavechunk(pos.x as u32, pos.y as u32, pos.z as u32),
         }
     }
 
-    pub fn localize(&mut self) -> IVec3 {
-        let chunk_coord = maths::div_floor_vec3(self.pos, 64);
-        let local_pos = maths::mod_floor_vec3(self.pos, 64);
+    pub fn localize(&mut self, extent: usize) -> IVec3 {
+        let chunk_coord = maths::div_floor_vec3(self.pos, extent as i32);
+        let local_pos = maths::mod_floor_vec3(self.pos, extent as i32);
 
-        let max_level = (64 as f32).log(4.0) as u8;
+        let max_level = (extent as f32).log(4.0) as u8;
         if self.level > max_level {
             self.level = max_level;
         }
         self.pos = local_pos;
         self.update_morton();
         return chunk_coord;
+    }
+
+    pub fn volume(&self)->usize {
+        let extent = maths::level_extent(self.level as usize);
+        extent*extent*extent 
     }
 
     pub fn normalize(&mut self, size: i32) {
@@ -100,13 +105,6 @@ impl VoxelVec {
     }
 
     pub fn update_morton(&mut self) {
-        self.morton =
-            shared::maths::ileavechunk(self.pos.x as u32, self.pos.y as u32, self.pos.z as u32);
-    }
-}
-
-impl PartialEq<Option<u8>> for VoxelVec {
-    fn eq(&self, other: &Option<u8>) -> bool {
-        self.mat == *other
+        self.morton = maths::ileavechunk(self.pos.x as u32, self.pos.y as u32, self.pos.z as u32);
     }
 }

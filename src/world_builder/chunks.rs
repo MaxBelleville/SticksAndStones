@@ -10,7 +10,7 @@ pub struct ChunkManagerPlugin;
 
 #[derive(Resource, Default)]
 struct ChunkTasks {
-    data: HashMap<IVec3, Task<chunk::ContreeChunk>>,
+    data: HashMap<IVec3, Task<chunk::Chunk>>,
 }
 
 impl Plugin for ChunkManagerPlugin {
@@ -22,9 +22,9 @@ impl Plugin for ChunkManagerPlugin {
 }
 
 fn init_chunk(mut state: ResMut<shared::res::WorldData>, time: Res<Time>) {
-    for x in -8..8 {
+    for z in -8..8 {
         for y in -1..1 {
-            for z in -8..8 {
+            for x in -8..8 {
                 state.proccessing_chunks.insert(ivec3(x, y, z));
             }
         }
@@ -68,9 +68,9 @@ fn collect_tasks(mut chunk_tasks: ResMut<ChunkTasks>, state: Res<shared::res::Wo
                         let idx = (z * 64 * 64) + (y * 64) + x;
                         let noise_val = noise_values[idx];
 
-                        let local_voxel = shared::res::VoxelVec::new(
+                        let local_voxel = shared::res::Voxel::new(
                             ivec3(x as i32, y as i32, z as i32),
-                            Some(1),
+                            1,
                             0,
                         );
                         let world_pos = local_voxel.chunk_to_world(coord).as_vec3a();
@@ -83,9 +83,10 @@ fn collect_tasks(mut chunk_tasks: ResMut<ChunkTasks>, state: Res<shared::res::Wo
                 }
             }
 
-            let mut chunk = chunk::ContreeChunk::new(voxels.len());
-            //voxels.sort_unstable_by_key(|v| v.morton);
-            chunk.build_all_voxels(voxels);
+            let mut chunk = chunk::Chunk::new(voxels.len());
+            voxels.sort_unstable_by_key(|v| v.morton);
+            chunk.build_region(voxels,0);
+           
             chunk
         });
 

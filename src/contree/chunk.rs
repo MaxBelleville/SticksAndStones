@@ -1,58 +1,37 @@
-
+use super::{handler, shared};
 use bevy::math::*;
 
-use super::shared;
-use super::pool;
+///Small helper that proccesses per 64x64x64 areas of voxels and helps proccess lod.
 #[derive(Debug)]
-pub struct ContreeChunk {
-    pool: pool::ContreeNodePool,
-    root: usize, // index of the root node in the pool
+pub struct Chunk {
+    handler: handler::Handler,
+    extent: usize,    // usually 64
+    base_root: usize, // index into NodePool
 }
 
-
-impl ContreeChunk {
+impl Chunk {
     pub fn new(voxel_size: usize) -> Self {
-        let capacity = shared::maths::estimate_nodes(voxel_size,64);
-        let mut pool = pool::ContreeNodePool::new(capacity); // always alloc 64 children per subdivision
-        let root = pool.get_root_node(64/4);
-        let base = pool.get_next_children_block(64/16);
-        pool.get_child_mut(root).set_pool_idx(Some(base));
-        Self { pool, root }
+        let est_cap = shared::maths::estimate_nodes(voxel_size, 64);
+        let (handler, base_root) = handler::Handler::new(est_cap, 3);
+        Self {
+            handler,
+            extent: 64,
+            base_root,
+        }
     }
 
-
-    pub fn get_is_uniform(&self) -> bool {
-        self.pool.get_is_uniform(self.root)
+    pub fn get_material(&self, local_point: IVec3) -> u8 {
+        self.handler.get_material(local_point, self.base_root, 3)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.pool.get_child(self.root).is_empty()
+    //Uses tree handler
+    pub fn build_voxel(&mut self, voxel: shared::res::Voxel) {
+        self.handler.build_voxel(voxel, self.base_root, 0,3);
     }
 
-    pub fn build_voxel(&mut self, voxel: shared::res::VoxelVec) {
-        self.pool.build_voxel(self.root, voxel);
-    }
-
-
-    pub fn build_all_voxels(&mut self,mut voxels: Vec<shared::res::VoxelVec>)
-    {
-        let vox_size = voxels.len();
-        self.pool.build_all_voxels(self.root, voxels.as_mut(),0,vox_size,64,IVec3::ZERO);
-    }
-    
-    pub fn get_material(&self, local_point: IVec3) -> Option<u8> {
-        self.pool.get_material(self.root, local_point)
-    }
-
- 
-
-    pub fn collect_leaf_data(
-        &self,
-        chunk_coord: IVec3,
-        out: &mut Vec<shared::res::VoxelVec>,
-    ) {
-        let base_pos = chunk_coord * 64;
-        let extent = self.pool.get_child(self.root).get_voxel_extent();
-        self.pool.collect_leaf_data(self.root, base_pos, extent, out);
+    //As needs chunk data can only happen here.
+    pub fn build_region(&mut self, voxels: Vec<shared::res::Voxel>, min_level: usize) {
+        self.handler
+            .build_region(voxels, self.base_root, 64, ivec3(0, 0, 0), min_level);
     }
 }
