@@ -1,0 +1,8 @@
+[
+    {
+        "id": "boulder_cluster",
+        "placement_radius": 3.0,
+        "min_slope": 0.2,
+        "max_slope": 0.8
+    }
+]

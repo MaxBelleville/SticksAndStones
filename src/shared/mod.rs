@@ -2,14 +2,8 @@ use bevy::prelude::*;
 
 
 pub mod components;
-pub mod maths;
 pub mod res;
 
-//Constants
-pub const RAYMARCH_PATH: &str = "shaders/raymarch.wgsl";
-pub const RASTERIZE_PATH: &str = "shaders/rasterize.wgsl";
-pub const LIGHTING_PATH: &str = "shaders/lighting.wgsl";
-pub const PREFILL_PATH: &str = "shaders/prefill_depth.wgsl";
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 pub enum GameState {
     #[default]

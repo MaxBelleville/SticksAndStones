@@ -1,0 +1,10 @@
+[package]
+name = "sns_world"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+num-traits = "0.2.19"
+bevy_math = {workspace = true}
+sns_core = {path = "../sns_core"}
+sns_macros = {path = "../sns_macros"}

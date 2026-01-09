@@ -1,0 +1,44 @@
+[
+    {
+        "id": "climate_temp",
+        "frequency": 0.00005,
+        "octaves": 3,
+        "gain": 0.5,
+        "lacunarity": 2.0
+    },
+    {
+        "id": "region_temp",
+        "frequency": 0.00005,
+        "octaves": 3,
+        "gain": 0.5,
+        "lacunarity": 2.0
+    },
+    {
+       "id": "local_temp",
+        "frequency": 0.002,
+        "octaves": 2,
+        "gain": 0.5,
+        "lacunarity": 2.0
+    },
+    {
+        "id": "climate_wet",
+        "frequency": 0.00005,
+        "octaves": 3,
+        "gain": 0.5,
+        "lacunarity": 2.0
+    },
+    {
+        "id": "region_wet",
+        "frequency": 0.00005,
+        "octaves": 3,
+        "gain": 0.5,
+        "lacunarity": 2.0
+    },
+    {
+       "id": "local_wet",
+        "frequency": 0.002,
+        "octaves": 2,
+        "gain": 0.5,
+        "lacunarity": 2.0
+    }
+]

@@ -1,0 +1,10 @@
+{
+    "version": 1,
+    "region_size": 1024,
+    "folders": [
+        "terrain",
+        "biomes",
+        "features",
+        "regions"
+    ]
+}

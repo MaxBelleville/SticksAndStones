@@ -1,12 +1,11 @@
 use bevy::{
-    platform::collections::HashSet,
     prelude::*,
-    render::{extract_component::ExtractComponent, extract_resource::ExtractResource},
+    render::extract_resource::ExtractResource,
     window::{PresentMode, WindowMode},
 };
 
 
-use super::{GameState, maths};
+use super::GameState;
 
 #[derive(Resource, Debug, Clone, ExtractResource)]
 pub struct WindowManagerSettings {

@@ -1,0 +1,8 @@
+[
+    {
+        "id": "rolling_hills",
+        "base_noise": 0.6,
+        "roughness": 0.3,
+        "erosion_strength": 0.2
+    }
+]
