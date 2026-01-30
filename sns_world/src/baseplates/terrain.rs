@@ -1,8 +1,7 @@
-use super::{ClimateSample, region};
+
 use crate::BIOME_BASE_WEIGHT;
-use crate::REGION_BASE_WEIGHT;
 use crate::SUBBIOME_BASE_WEIGHT;
-use crate::prelude::LocalPlateSample;
+use crate::prelude::{LocalPlateSample,ClimateSample};
 use bevy_math::*;
 use sns_core::prelude::NoiseFields;
 use std::collections::HashMap;
@@ -16,38 +15,27 @@ impl TerrainPlate {
         coord: Vec2,
         seed: i32,
         climate: ClimateSample,
-        archetype: &region::RegionArchetype,
         noise_fields: &NoiseFields,
     ) -> LocalPlateSample {
         let mut local = LocalPlateSample::default();
-        local.set_field(climate.field);
+        local.set_field(climate.get_field());
 
-        if let Some(terrain_profile_id) = archetype.get_opt_terrain_profile_id() {
-            let region_profile = self.terrain_profiles.get(terrain_profile_id).unwrap();
-            
-            region_profile.apply(coord, seed, REGION_BASE_WEIGHT, &mut local, noise_fields);
-            local.set_region_modifier_ids(archetype.get_region_modifier_ids());
-            local.append_feature_rules(archetype.get_rule_ids());
-        }
+        local.set_base_rule_ids(climate.get_base_rule_ids().clone());
 
-        for active in climate.active_biomes {
+        for active in climate.get_active_biomes() {
             let Some(biome_profile) = self.terrain_profiles.get(&active.get_terrain_profile_id())
             else {
                 continue;
             };
 
             biome_profile.apply(coord, seed, active.get_weight() * BIOME_BASE_WEIGHT, &mut local, noise_fields);
-            local.set_biome_modifier_ids(active.get_biome_modifier_ids());
-            local.append_feature_rules(active.get_rule_ids());
             for sub in active.get_sub_biomes() {
                 let Some(terrain_profile_id) = sub.get_opt_terrain_profile_id() else {
                     continue;
                 };
                 let subbiome_profile = self.terrain_profiles.get(terrain_profile_id).unwrap();
 
-                subbiome_profile.apply(coord, seed, sub.get_strength() * SUBBIOME_BASE_WEIGHT, &mut local, noise_fields);
-                local.set_subbiome_modifier_ids(sub.get_subbiome_modifier_ids());
-                local.append_feature_rules(sub.get_rule_ids());
+                subbiome_profile.apply(coord, seed, sub.get_weight() * SUBBIOME_BASE_WEIGHT, &mut local, noise_fields);
             }
         }
 

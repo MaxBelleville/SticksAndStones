@@ -1,9 +1,11 @@
-mod biome;
+pub mod biome;
 mod region;
 mod terrain;
 
-use super::structs::{GridSampleCache, GridSampler};
-use crate::prelude::{ClimateField, NoiseIds, LocalPlateSample};
+use crate::prelude::{
+    BaseRules, ClimateField, ClimateSample, GridSampleCache, GridSampler, LocalPlateSample,
+    NoiseBasis,
+};
 use bevy_math::*;
 use sns_macros::Iterable;
 use std::collections::HashMap;
@@ -14,9 +16,10 @@ pub struct ClimatePlate {
     region_plate: region::RegionPlate,
     biome_plate: biome::BiomePlate,
     terrain_plate: terrain::TerrainPlate,
-    noise_plate: NoisePlate,
+    noise_plate: NoiseBasisPlate,
     noise_fields: NoiseFields,
 
+    base_rules: BaseRules,
     climate_grid_cache: GridSampleCache<ClimateSample>,
     local_grid_cache: GridSampleCache<LocalPlateSample>,
 }
@@ -26,11 +29,12 @@ impl Default for ClimatePlate {
             region_plate: region::RegionPlate::default(),
             biome_plate: biome::BiomePlate::default(),
             terrain_plate: terrain::TerrainPlate::default(),
-            noise_plate: NoisePlate::default(),
+            noise_plate: NoiseBasisPlate::default(),
             noise_fields: NoiseFields::default(),
-           
-            climate_grid_cache: GridSampleCache::new(2, 512.0),
-            local_grid_cache: GridSampleCache::new(64, 4.0),
+
+            base_rules: BaseRules::default(),
+            climate_grid_cache: GridSampleCache::new(6, 512.0),
+            local_grid_cache: GridSampleCache::new(128, 3.0),
         }
     }
 }
@@ -40,44 +44,20 @@ impl ClimatePlate {
         let mut field = ClimateField::default();
 
         let noise_part_iter = self.noise_plate.iter();
-        let mut noise_sums: HashMap<String, f32> = HashMap::new();
 
-        for (_name, noise_ids_any) in noise_part_iter {
+        for (_name, noise_basis_any) in noise_part_iter {
             //Loop through each noise part
-            if let Some(noise_ids) = noise_ids_any.downcast_ref::<NoiseIds>() {
-                //Loop through each noise id in the noise part
-                for (noise_name, noise_id) in noise_ids.iter() {
-                    //Get noise field from id
-                    let Some(noise) = self.noise_fields.get(noise_id.to_string())
-                    else {
-                        return field;
-                    };
-                    //add sample_fbm to a hashmap of noise_name(ex temp,roughness): sum
-                    let noise_val = noise.sample_fbm_2d(coord, seed);
-                    if let Some(sum_val) = noise_sums.get_mut(noise_name) {
-                        *sum_val += noise_val;
-                    } else {
-                        noise_sums.insert(noise_name.to_string(), noise_val);
-                    }
-                }
+            if let Some(noise_basis) = noise_basis_any.downcast_ref::<NoiseBasis>() {
+                //Get noise field from basis
+                let Some(noise) = self.noise_fields.get(noise_basis.get_noise_id()) else {
+                    return field;
+                };
+                //Get noise value from noise field and mutiply weight
+                let noise_val = noise.sample_fbm_2d(coord, seed);
+                field = field + (noise_basis.get_weight() * noise_val);
             }
         }
-
-        let field_iter = field.iter_mut_val();
-        //zip field_iter with noise_sums
-        for ((name, sum_val), field_value) in std::iter::zip(noise_sums.iter(), field_iter) {
-            let mut final_sum = sum_val.clone();
-            final_sum = final_sum.clamp(0.0, 1.0);
-
-            // Optional per-field post-processing
-            if name == "ruggedness" {
-                final_sum = final_sum.abs();
-            }
-
-            if let Some(v) = field_value.downcast_mut::<f32>() {
-                *v = final_sum;
-            }
-        }
+        field.abs_rugedness();
         field
     }
     pub fn interpolation(&self, coord: Vec2) -> ClimateSample {
@@ -110,17 +90,40 @@ impl GridSampler<ClimateSample> for ClimatePlate {
             .get_archetype(region_sample.get_archetype_id())
             .expect("Missing archetype");
 
-        field_data = field_data + archetype.get_bias();
+        let mut bias = archetype.get_bias() * region_sample.get_edge_factor();
 
-        let active_biomes =
-            self.biome_plate
-                .evaluate_biomes(world_pos, field_data, &self.noise_fields, seed);
-
-        ClimateSample {
-            field: field_data,
-            active_biomes,
-            archetype_id: region_sample.get_archetype_id(),
+        if let Some(max_delta) = archetype.get_max_climate_delta() {
+            bias = bias.clamp(max_delta);
         }
+
+        field_data = field_data + bias;
+
+        let local_noise_id = self.noise_plate.local.get_noise_id();
+        let local_noise = self.noise_fields.get(local_noise_id).unwrap();
+
+        let active_biomes = self.biome_plate.evaluate_biomes(
+            world_pos,
+            seed,
+            field_data.to_partial(),
+            &self.base_rules,
+            local_noise,
+        );
+
+        let mut base_rule_ids = archetype.get_base_rules().clone();
+
+        for biome in active_biomes.iter() {
+            base_rule_ids.extend(biome.get_base_rule_ids().iter().cloned());
+            for sub in biome.get_sub_biomes() {
+                base_rule_ids.extend(sub.get_base_rule_ids().iter().cloned());
+            }
+        }
+
+        ClimateSample::new(
+            field_data,
+            active_biomes,
+            region_sample.get_archetype_id(),
+            base_rule_ids,
+        )
     }
 }
 
@@ -132,50 +135,46 @@ impl GridSampler<LocalPlateSample> for ClimatePlate {
         let jitter = (hash_vec2(grid_coord, seed) - 0.5) * self.local_grid_cache.get_grid_size();
         let world_pos = base_pos + jitter;
 
-        let final_interp = self.interpolation(world_pos);
-        let archetype = self
-            .region_plate
-            .get_archetype(final_interp.archetype_id.clone())
-            .expect("Missing archetype");
+        let mut final_interp = self.interpolation(world_pos);
+        final_interp.recalculate_rules(&self.base_rules);
 
         //Do other stuff
-        self.terrain_plate.blend(world_pos,seed,final_interp, archetype,&self.noise_fields)
-        
+        self.terrain_plate
+            .blend(world_pos, seed, final_interp, &self.noise_fields)
     }
 }
 
 #[derive(Default, Iterable)]
 #[iterable(std::any::Any)]
-pub struct NoisePlate {
-    climate: NoiseIds,
-    region: NoiseIds,
-    local: NoiseIds,
+pub struct NoiseBasisPlate {
+    climate: NoiseBasis,
+    region: NoiseBasis,
+    local: NoiseBasis,
 }
 
-#[derive(Default,Clone)]
-pub struct ClimateSample {
-    field: ClimateField,
-    active_biomes: Vec<biome::ActiveBiome>,
-    archetype_id: String,
+pub trait ClimateInterpolator {
+    fn lerp(&self, other: &Self, t: f32) -> Self;
+    fn lerp_biomes(&self, other: &Vec<biome::ActiveBiome>, t: f32) -> Vec<biome::ActiveBiome>;
 }
 
-impl ClimateSample {
-    pub fn lerp(&self, other: &Self, t: f32) -> Self {
-        let field = self.field.lerp(&other.field, t);
-        let curr_active_biomes = self.lerp_biomes(&other.active_biomes, t);
-        Self {
+impl ClimateInterpolator for ClimateSample {
+    fn lerp(&self, other: &Self, t: f32) -> Self {
+        let field = self.get_field().lerp(&other.get_field(), t);
+        let curr_active_biomes = self.lerp_biomes(other.get_active_biomes(), t);
+        Self::new(
             field,
-            active_biomes: curr_active_biomes,
-            archetype_id: self.archetype_id.clone(),
-        }
+            curr_active_biomes,
+            self.get_archetype_id(),
+            self.get_base_rule_ids().clone(),
+        )
     }
 
-    pub fn lerp_biomes(&self, other: &Vec<biome::ActiveBiome>, t: f32) -> Vec<biome::ActiveBiome> {
+    fn lerp_biomes(&self, other: &Vec<biome::ActiveBiome>, t: f32) -> Vec<biome::ActiveBiome> {
         //as other and self.active_biomes lists might be different sizes we have do a hashmap
 
         let mut map = HashMap::new();
 
-        for biome in self.active_biomes.iter() {
+        for biome in self.get_active_biomes().iter() {
             map.insert(biome.get_biome_id(), (Some(biome), None));
         }
 
@@ -207,5 +206,3 @@ impl ClimateSample {
             .collect()
     }
 }
-
-

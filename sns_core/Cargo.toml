@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 simdnoise = "3.1.6"
 bevy_math = {workspace = true}
+bytemuck = {workspace = true}

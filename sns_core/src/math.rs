@@ -26,6 +26,32 @@ pub fn mod_floor_vec3(a: IVec3, b: i32) -> IVec3 {
 }
 
 #[inline]
+pub fn hash_str(s: &str, seed: i32) -> u32 {
+    let mut h = seed as u32;
+
+    for &byte in s.as_bytes() {
+        // XOR the byte into the hash
+        h ^= byte as u32;
+        // Multiply by a large constant to spread the bits (similar to your hash2)
+        // 0x9E3779B9 is often used because it's the golden ratio constant
+        h = h.wrapping_mul(0x9E3779B9);
+    }
+
+    // Final mix to ensure bits are well-distributed
+    h = h.wrapping_mul(0xC2B2AE35);
+    h
+}
+
+#[inline]
+pub fn hash_str_vec2(s: &str, seed: i32) -> Vec2 {
+    let h = hash_str(s, seed);
+    Vec2::new(
+        (h & 0xFFFF) as f32 / 65535.0,
+        ((h >> 16) & 0xFFFF) as f32 / 65535.0,
+    )
+}
+
+#[inline]
 pub fn hash2(coord: IVec2, seed: i32) -> u32 {
     let mut h = seed as u32;
     h ^= coord.x as u32 * 0x9E3779B9;
@@ -63,4 +89,8 @@ pub fn morton_split(mut x: u32) -> u32 {
 
 pub fn morton3(x: u32, y: u32, z: u32) -> u32 {
     morton_split(x) | (morton_split(y) << 1) | (morton_split(z) << 2)
+}
+
+pub fn next_pow2(x: usize) -> usize {
+    x.next_power_of_two()
 }

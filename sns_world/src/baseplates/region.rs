@@ -17,7 +17,7 @@ impl Default for RegionPlate {
         Self {
             archetypes: HashMap::new(),
             archetypes_ids: Vec::new(),
-            region_size: 1024.0
+            region_size: 4096.0
         }
     }
 }
@@ -35,7 +35,7 @@ impl RegionPlate {
             .clamp(0.0, 1.0);
 
         RegionSample {
-            coord: v.closest,
+            _coord: v.closest,
             archetype_id,
             edge_factor
         }
@@ -85,26 +85,18 @@ impl RegionPlate {
 #[derive(Default)]
 pub struct RegionArchetype {
     bias: ClimateField,
-    max_climate_fields: ClimateField,
-    terrain_profile_id: Option<String>,
-    region_modifier_ids: Vec<String>,
-    feature_rule_ids: Vec<String>,
+    max_climate_delta: Option<ClimateField>,
+    base_rules: Vec<String>,
 }
 impl RegionArchetype {
    pub fn get_bias(&self) -> ClimateField {
         self.bias
     }
-    pub fn _get_max_climate(&self) -> ClimateField {
-        self.max_climate_fields
-    } 
-    pub fn get_opt_terrain_profile_id(&self) -> &Option<String> {
-        &self.terrain_profile_id
+    pub fn get_base_rules(&self) -> &Vec<String> {
+        &self.base_rules
     }
-    pub fn get_region_modifier_ids(&self) -> &Vec<String> {
-        &self.region_modifier_ids
-    }
-    pub fn get_rule_ids(&self) -> &Vec<String> {
-        &self.feature_rule_ids
+    pub fn get_max_climate_delta(&self) -> Option<ClimateField> {
+        self.max_climate_delta
     }
 }
 
@@ -117,13 +109,13 @@ pub struct VoronoiResult {
 
 #[derive(Default)]
 pub struct RegionSample {
-    coord: RegionCoord,
+    _coord: RegionCoord,
     archetype_id: String,
     edge_factor: f32,
 }
 impl RegionSample {
-    pub fn get_coord(&self) -> RegionCoord {
-        self.coord
+    pub fn _get_coord(&self) -> RegionCoord {
+        self._coord
     }
     pub fn get_archetype_id(&self) -> String {
         self.archetype_id.clone()

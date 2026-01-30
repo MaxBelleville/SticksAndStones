@@ -46,6 +46,12 @@ pub fn derive_field_math(input: TokenStream) -> TokenStream {
         let ident = f.ident.as_ref().unwrap();
         quote!(#ident: self.#ident.min(rhs.#ident))
     });
+
+    let clamp_fields = active_fields.iter().map(|f| {
+        let ident = f.ident.as_ref().unwrap();
+        quote!(#ident: self.#ident.clamp(-rhs.#ident,rhs.#ident))
+    });
+    
     
     let lerp_fields = active_fields.iter().map(|f| {
         let ident = f.ident.as_ref().unwrap();
@@ -108,6 +114,11 @@ pub fn derive_field_math(input: TokenStream) -> TokenStream {
             pub fn min(self, rhs: Self) -> Self {
                  Self { #(#min_fields),* }
             }
+            
+            pub fn clamp(self, rhs: Self) -> Self {
+                 Self { #(#clamp_fields),* }
+            }
+
 
             pub fn lerp(&self, other: &Self, t: f32) -> Self {
                 Self { #(#lerp_fields),* }

@@ -1,5 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    iter,
+};
 
+use crate::baseplates::biome::ActiveBiome;
 use bevy_math::*;
 use sns_core::prelude::*;
 use sns_macros::*;
@@ -23,48 +27,103 @@ impl std::ops::Mul<f32> for ClimateField {
         self
     }
 }
+impl ClimateField {
+    pub fn abs_rugedness(&mut self) {
+        self.ruggedness = self.ruggedness.abs();
+    }
+    pub fn to_partial(&self) -> PartialClimateField {
+        let mut partial = PartialClimateField::default();
+        let partial_mut = partial.iter_mut();
+        let full_iter = self.iter();
 
+        for ((full_name, full_val_prim), (part_name, part_val_any)) in
+            iter::zip(full_iter, partial_mut)
+        {
+            if full_name == part_name {
+                let full_val = full_val_prim.to_f32().unwrap();
+                let Some(part_val) = part_val_any.downcast_mut::<f32>() else {
+                    continue;
+                };
+                *part_val = full_val;
+            }
+        }
 
-#[derive(Default, Iterable)]
-#[iterable(ToString)]
+        partial
+    }
+}
 
-pub struct NoiseIds {
-    temperature: String,
-    moisture: String,
-    continentalness: String,
-    ruggedness: String,
+#[derive(Default, Copy, Clone, FieldMath)]
+
+pub struct PartialClimateField {
+    temperature: f32,
+    moisture: f32,
+}
+#[derive(Default)]
+pub struct NoiseBasis {
+    noise_id: String,
+    weight: ClimateField,
+}
+impl NoiseBasis {
+    pub fn get_noise_id(&self) -> String {
+        self.noise_id.clone()
+    }
+    pub fn get_weight(&self) -> ClimateField {
+        self.weight
+    }
+}
+#[derive(Default)]
+pub struct BaseRules {
+    rules: HashMap<String,BaseRule>,
+}
+impl BaseRules {
+    pub fn get_rules(&self) -> &HashMap<String,BaseRule> {
+        &self.rules
+    }
+    pub fn get_rule(&self,id: String) -> Option<&BaseRule> {
+        self.rules.get(id.as_str())
+    }
+}
+
+#[derive(Default)]
+pub struct BaseRule {
+    min_weight: f32,
+    is_feature: bool, 
+    scope: String, //regional,biome,subbiome
+    rule_type: String, //Ex village,enemey_nest, dugeon, city,etc.
+    rule_id: String, //Specific modifier or structure ex elven tree / goblin camp.
+}
+impl BaseRule {
+    pub fn get_min_weight(&self) -> f32 {
+        self.min_weight
+    }
+    pub fn is_feature(&self) -> bool {
+        self.is_feature
+    }
+    pub fn get_scope(&self) -> String {
+        self.scope.clone()
+    }
+    pub fn get_rule_type(&self) -> String {
+        self.rule_type.clone()
+    }
+    pub fn get_rule_id(&self) -> String {
+        self.rule_id.clone()
+    }
 }
 
 #[derive(Default)]
 pub struct LocalPlateSample {
     field: ClimateField,
-    region_modifier_ids: Vec<String>,
-    biome_modifier_ids: Vec<String>,
-    subbiome_modifier_ids: Vec<String>,
-    feature_rule_ids: Vec<String>,
 
     height_mean: f32,
     height_variance: f32,
     roughness: f32,
     erosion_bias: f32,
     density_curve_id: Option<String>,
-
     weight_sum: f32,
+
+     base_rule_ids: Vec<String>,
 }
 impl LocalPlateSample {
-    pub fn append_feature_rules(&mut self, other: &Vec<String>) {
-         let mut tmp_feature_rules = other.clone();
-         self.feature_rule_ids.append(&mut tmp_feature_rules);
-    }
-    pub fn set_region_modifier_ids(&mut self, ids: &Vec<String>) {
-        self.region_modifier_ids = ids.clone();
-    }
-    pub fn set_biome_modifier_ids(&mut self, ids: &Vec<String>) {
-        self.biome_modifier_ids = ids.clone();
-    }
-    pub fn set_subbiome_modifier_ids(&mut self, ids: &Vec<String>) {
-        self.subbiome_modifier_ids =ids.clone();
-    }
     pub fn insert_first_density_id(&mut self, density_curve_id: Option<String>) {
         //If self.density_curve_id doesn't exists and parameter density_curve_id exists add
         if self.density_curve_id.is_none() && density_curve_id.is_some() {
@@ -78,15 +137,32 @@ impl LocalPlateSample {
         self.roughness /= self.weight_sum;
         self.erosion_bias /= self.weight_sum;
         self.weight_sum = 1.0; // Just to make sure it's impossible to normalize again without changing values.
-        
     }
-    pub fn add_terrain(&mut self, height_mean: f32, height_variance: f32, roughness: f32, erosion_bias: f32, weight: f32) {
+    pub fn set_base_rule_ids(&mut self, base_rule_ids: Vec<String>) {
+        self.base_rule_ids = base_rule_ids;
+    }
+    pub fn set_field(&mut self, field: ClimateField) {
+        self.field = field;
+    }
+    pub fn add_terrain(
+        &mut self,
+        height_mean: f32,
+        height_variance: f32,
+        roughness: f32,
+        erosion_bias: f32,
+        weight: f32,
+    ) {
         self.height_mean += height_mean;
         self.height_variance += height_variance;
         self.roughness += roughness;
         self.erosion_bias += erosion_bias;
         self.weight_sum += weight;
     }
+
+    pub fn get_base_rules(&self) -> &Vec<String> {
+        &self.base_rule_ids
+    }
+    
     pub fn get_height_mean(&self) -> f32 {
         self.height_mean
     }
@@ -105,54 +181,11 @@ impl LocalPlateSample {
     pub fn get_weight_sum(&self) -> f32 {
         self.weight_sum
     }
-    pub fn set_field(&mut self, field: ClimateField) {
-        self.field = field;
-    }
     pub fn get_field(&self) -> ClimateField {
         self.field
     }
-    pub fn get_region_modifier_ids(&self) -> &Vec<String> {
-        &self.region_modifier_ids
-    }
-    pub fn get_biome_modifier_ids(&self) -> &Vec<String> {
-        &self.biome_modifier_ids 
-    }
-    pub fn get_subbiome_modifier_ids(&self) -> &Vec<String> {
-        &self.subbiome_modifier_ids
-    }
-    pub fn get_feature_rule_ids(&self) -> &Vec<String> {
-        &self.feature_rule_ids 
-    }
-    
-    
 }
 
-#[derive(Default)]
-pub struct SharedTerrainPlate {
-    region_modifier_ids: HashMap<String, TerrainModifier>,
-    biome_modifier_ids: HashMap<String, TerrainModifier>,
-    subbiome_modifier_ids: HashMap<String, TerrainModifier>,
-
-    feature_rules: HashMap<String, TerrainFeature>,
-    denisty_curves: HashMap<String, DensityCurve>,
-}
-impl SharedTerrainPlate {
-    pub fn get_region_modifier(&self, id: String) -> Option<&TerrainModifier> {
-        self.region_modifier_ids.get(&id)
-    }
-    pub fn get_biome_modifier(&self, id: String) -> Option<&TerrainModifier> {
-        self.biome_modifier_ids.get(&id)
-    }
-    pub fn get_subbiome_modifier(&self, id: String) -> Option<&TerrainModifier> {
-        self.subbiome_modifier_ids.get(&id)
-    }
-    pub fn get_feature_rule(&self, id: String) -> Option<&TerrainFeature> {
-        self.feature_rules.get(&id)
-    }
-    pub fn get_density_curve(&self, id: String) -> Option<&DensityCurve> {
-        self.denisty_curves.get(&id)
-    }
-}
 #[derive(Default)]
 pub struct DensityPoint {
     height: f32,
@@ -161,35 +194,13 @@ pub struct DensityPoint {
 
 #[derive(Default)]
 pub struct DensityCurve {
-    points: Vec<DensityPoint> 
+    points: Vec<DensityPoint>,
 }
 impl DensityCurve {
     pub fn sample(&self, h: f32) -> f32 {
         // Piecewise linear interpolation
         return 0.0;
     }
-}
-
-#[derive(Default)]
-pub struct TerrainModifier {}
-
-#[derive(Default)]
-pub struct TerrainFeature {
-    placement_radius: f32,
-    density: f32,
-
-    min_height: f32,
-    max_height: f32,
-    min_slope: f32,
-    max_slope: f32,
-}
-
-#[derive(Default)]
-pub struct FeatureRule {
-    feature_id: String,
-    min_biome_weight: f32,
-    min_subbiome_strength: f32,
-    spawn_probability: f32,
 }
 
 pub trait GridSampler<T> {
@@ -210,10 +221,7 @@ impl<T> GridSampleCache<T> {
             grid: HashMap::new(),
         }
     }
-    pub fn required_cells(
-        &self,
-        center: IVec2,
-    ) -> HashSet<IVec2> {
+    pub fn required_cells(&self, center: IVec2) -> HashSet<IVec2> {
         let mut set = HashSet::new();
 
         for y in -self.cell_res..=self.cell_res {
@@ -231,10 +239,7 @@ impl<T> GridSampleCache<T> {
         )
     }
     pub fn pos_reduce_to_cell(&self, pos: Vec2) -> Vec2 {
-        Vec2::new(
-            pos.x / self.grid_size,
-            pos.y / self.grid_size,
-        )
+        Vec2::new(pos.x / self.grid_size, pos.y / self.grid_size)
     }
     pub fn get_grid_size(&self) -> f32 {
         self.grid_size
@@ -245,17 +250,13 @@ impl<T> GridSampleCache<T> {
     pub fn get_cell(&self, grid_coord: IVec2) -> &T {
         self.grid.get(&grid_coord).unwrap()
     }
-      
-    pub fn update<S: GridSampler<T>>(
-        &mut self,
-        sampler: &mut S,
-        world_pos: Vec2,
-        seed: i32,
-    ) {
+
+    pub fn update<S: GridSampler<T>>(&mut self, sampler: &mut S, world_pos: Vec2, seed: i32) {
         let center = self.pos_to_cell(world_pos);
         let required = self.required_cells(center);
 
-        self.grid.retain(|grid_coord, _| required.contains(grid_coord));
+        self.grid
+            .retain(|grid_coord, _| required.contains(grid_coord));
 
         for grid_coord in required {
             if !self.grid.contains_key(&grid_coord) {
@@ -263,5 +264,57 @@ impl<T> GridSampleCache<T> {
                 self.grid.insert(grid_coord, value);
             }
         }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct ClimateSample {
+    field: ClimateField,
+    active_biomes: Vec<ActiveBiome>,
+    archetype_id: String,
+    base_rule_ids: Vec<String>,
+}
+
+impl ClimateSample {
+    pub fn new(
+        field: ClimateField,
+        active_biomes: Vec<ActiveBiome>,
+        archetype_id: String,
+        base_rule_ids: Vec<String>,
+    ) -> Self {
+        Self {
+            field,
+            active_biomes,
+            archetype_id,
+            base_rule_ids,
+        }
+    }
+
+    pub fn get_field(&self) -> ClimateField {
+        self.field
+    }
+    pub fn set_field(&mut self, field: ClimateField) {
+        self.field = field;
+    }
+
+    pub fn get_active_biomes(&self) -> &Vec<ActiveBiome> {
+        &self.active_biomes
+    }
+    pub fn set_active_biomes(&mut self, active_biomes: Vec<ActiveBiome>) {
+        self.active_biomes = active_biomes;
+    }
+    pub fn recalculate_rules(&mut self, base_rules: &BaseRules) {
+        for biome in self.active_biomes.iter_mut() {
+            biome.recompute_rules(base_rules);   
+        }
+    }
+
+
+    pub fn get_archetype_id(&self) -> String {
+        self.archetype_id.clone()
+    }
+
+    pub fn get_base_rule_ids(&self) -> &Vec<String> {
+        &self.base_rule_ids
     }
 }
