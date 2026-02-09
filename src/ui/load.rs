@@ -1,59 +1,131 @@
+use crate::ui;
 use bevy::prelude::*;
-use bevy_lunex::prelude::*;
-
-use super::UICanvas;
-use super::shared;
-
-// Tag component used to tag entities added on the splash screen
-#[derive(Component)]
-struct LoadScreen;
-
+use iyes_progress::prelude::*;
 pub struct LoadPlugin;
 
-// This plugin will display a splash screen with Bevy logo for 1 second before switching to the menu
 impl Plugin for LoadPlugin {
     fn build(&self, app: &mut App) {
-        app
-            // When entering the state, spawn everything needed for this screen
-            .add_systems(OnEnter(shared::GameState::StartGame), load_setup)
-            // While in this state, run the `countdown` system
-            .add_systems(
-                Update,
-                progress.run_if(in_state(shared::GameState::StartGame)),
+        app.add_plugins(
+            ProgressPlugin::<ui::ManagerState>::new().with_state_transition(
+                ui::ManagerState::StartLoadingGame,
+                ui::ManagerState::InGame,
+            ),
+        )
+        .add_systems(
+            OnEnter(ui::ManagerState::StartLoadingGame),
+            start_game_setup,
+        )
+        .add_systems(
+            Update,
+            (
+                mouse_clicks.track_progress_and_stop::<ui::ManagerState>(),
+                update_progress_entity,
+                update_progress_bar,
             )
-            // When exiting the state, despawn everything that was spawned for this screen
-            .add_systems(
-                OnExit(shared::GameState::StartGame),
-                shared::despawn::<LoadScreen>,
-            );
+                .run_if(in_state(ui::ManagerState::StartLoadingGame)),
+        );
     }
 }
 
-fn load_setup(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    container_query: Query<Entity, With<UICanvas>>,
-) {
-    if let Ok(container) = container_query.single() {
-        commands.entity(container).with_children(|ui| {
-            ui.spawn((
-                LoadScreen,
-                // You can name the entity
+fn mouse_clicks(input: Res<ButtonInput<MouseButton>>, mut n_clicks: Local<u32>) -> Progress {
+    const MAX_CLICKS: u32 = 3;
 
-                // Specify the position and size of the button
-                UiLayout::window()
-                    .anchor(Anchor::CENTER) // Put the origin at the center
-                    .pos(Rl((50.0, 50.0))) // Set the position to 50%
-                    .size((200.0, 200.0)) // Set the size to [200.0, 200.0]
-                    .pack(),
-                // Attach sprite to the node
-                Sprite::from_image(asset_server.load("images/bevy.png")),
-                // When hovered, it will request the cursor icon to be changed
-                OnHoverSetCursor::new(SystemCursorIcon::Pointer),
-                // Interactivity is done through observers, you can query anything here
+    if input.just_pressed(MouseButton::Left) {
+        *n_clicks += 1;
+    }
+
+    Progress {
+        done: *n_clicks,
+        total: MAX_CLICKS,
+    }
+}
+
+#[derive(Component)]
+struct OnLoading;
+
+#[derive(Component)]
+struct StartGameProgress;
+
+#[derive(Component)]
+struct ProgressBarInner;
+
+#[derive(Component)]
+struct ProgressBarText;
+
+fn start_game_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let main_bg = asset_server.load("images/menu/main_bg.png");
+    commands
+        .spawn(ui::components::menu_bg(
+            main_bg,
+            ui::ManagerState::StartLoadingGame,
+            OnLoading,
+            JustifyContent::Center,
+            AlignItems::Center,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                StartGameProgress,
+                ProgressEntity::<ui::ManagerState>::default()
+                    // give it some initial values
+                    .with_progress(0, 1),
+            ));
+
+            parent.spawn((
+                BackgroundColor(Color::srgb(0.25, 0.25, 0.25)),
+                BorderColor::all(Color::srgb(0.0, 0.0, 0.0)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: percent(30.0),
+                    height: percent(5.0),
+                    border: UiRect::all(px(1.0)),
+                    ..Default::default()
+                },
+                children![(
+                    BackgroundColor(Color::srgb(0.5, 0.75, 0.5)),
+                    BorderColor::all(Color::srgb(0.5, 0.5, 0.5)),
+                    Node {
+                        height: Val::Percent(100.0),
+                        width: Val::Percent(0.0),
+                        padding: UiRect::left(Val::Px(16.0)),
+                        align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..Default::default()
+                    },
+                    ProgressBarInner,
+                    children![(
+                        Text::new("0/0".to_owned()),
+                        TextColor(Color::BLACK),
+                        ProgressBarText,
+                    )]
+                )],
             ));
         });
-    }
 }
 
-fn progress() {}
+fn update_progress_entity(
+    mut q: Query<&mut ProgressEntity<ui::ManagerState>, With<StartGameProgress>>,
+) {
+    let Ok(mut p) = q.single_mut() else {
+        return;
+    };
+    p.visible.done = 1;
+}
+
+fn update_progress_bar(
+    // Here is where the progress is stored
+    pt: Res<ProgressTracker<ui::ManagerState>>,
+    // our UI elements
+    mut q_bar_inner: Query<&mut Node, With<ProgressBarInner>>,
+    mut q_bar_text: Query<&mut Text, With<ProgressBarText>>,
+) {
+    // get the progress info (visible progress)
+    let progress = pt.get_global_progress();
+    let ratio: f32 = progress.into();
+
+    for mut text in q_bar_text.iter_mut() {
+        *text = Text::new(format!("{}/{}", progress.done, progress.total));
+    }
+    for mut node in q_bar_inner.iter_mut() {
+        node.width = Val::Percent(ratio * 100.0);
+    }
+}

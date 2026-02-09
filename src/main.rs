@@ -1,35 +1,30 @@
-use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*};
-use bevy_lunex::UiLunexPlugins;
+use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, pbr::DefaultOpaqueRendererMethod, prelude::*};
 use bevy_skein::SkeinPlugin;
 
-mod player;
 mod ui;
 mod shared;
-mod window_manager;
+mod window;
 mod world_gen;
+mod net;
+mod hdr;
+
 
 fn main() {
-    //Initalized the nishita sky model
     App::new()
-        .insert_resource(shared::res::ExtractedGameState(shared::GameState::default()))
+        .insert_resource(ui::ExtractedManagerState(ui::ManagerState::default()))
+        .insert_resource(DefaultOpaqueRendererMethod::deferred())
+        .insert_resource(GlobalAmbientLight::NONE)
         .add_plugins((
             DefaultPlugins.set(ImagePlugin::default_nearest()),
             FrameTimeDiagnosticsPlugin::default(),
-            window_manager::WindowManagerPlugin,
-            UiLunexPlugins,
+            window::WindowPlugin,
             SkeinPlugin::default(),
             ui::UIPlugins,
-            player::PlayerPlugin,
             world_gen::WorldGenPlugin,
+            net::NetPlugin,
+            hdr::HdrPlugin,
         ))
-        .init_state::<shared::GameState>()
-        .add_systems(Update, sync_game_state)
+        .add_systems(Update, ui::sync_manager_state)
         .run();
 }
 
-pub fn sync_game_state(
-    state: Res<State<shared::GameState>>,
-    mut extracted: ResMut<shared::res::ExtractedGameState>,
-) {
-    extracted.0 = *state.get();
-}

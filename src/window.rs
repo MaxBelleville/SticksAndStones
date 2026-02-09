@@ -2,16 +2,18 @@ use bevy::{
     prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
 };
 
+use crate::ui;
+
 use super::shared;
 
-pub struct WindowManagerPlugin;
+pub struct WindowPlugin;
 
-impl Plugin for WindowManagerPlugin {
+impl Plugin for WindowPlugin {
     fn build(&self, app: &mut App) {
-         app.insert_resource(shared::res::WindowManagerSettings::default());
-         app.add_systems(Startup, setup_window);
-         app.add_systems(OnEnter(shared::GameState::InGame), disable_cursor);
-         app.add_systems(OnExit(shared::GameState::InGame), enable_cursor);
+         app.insert_resource(shared::res::WindowManagerSettings::default())
+         .add_systems(Startup, setup_window)
+         .add_systems(OnEnter(ui::GameState::Normal), disable_cursor)
+         .add_systems(OnExit(ui::GameState::Normal), enable_cursor);
     }
 }
 

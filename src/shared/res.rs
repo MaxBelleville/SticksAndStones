@@ -5,8 +5,6 @@ use bevy::{
 };
 
 
-use super::GameState;
-
 #[derive(Resource, Debug, Clone, ExtractResource)]
 pub struct WindowManagerSettings {
     pub display_factor: f32,
@@ -30,9 +28,6 @@ impl Default for WindowManagerSettings {
         }
     }
 }
-
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Hash, ExtractResource)]
-pub struct ExtractedGameState(pub GameState);
 
 #[derive(Resource, Clone, Copy, ExtractResource, Default)]
 pub struct AtmosphereData {

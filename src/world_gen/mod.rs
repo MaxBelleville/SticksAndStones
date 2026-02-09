@@ -9,6 +9,6 @@ pub struct World {
 pub struct WorldGenPlugin;
 impl Plugin for WorldGenPlugin {
     fn build(&self, app: &mut App) {
-        
+
     }
 }
