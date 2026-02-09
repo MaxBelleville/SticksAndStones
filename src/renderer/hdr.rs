@@ -3,7 +3,6 @@ use bevy::prelude::*;
 
 use bevy::{core_pipeline::tonemapping::Tonemapping, render::render_resource::BlendState};
 
-use crate::shared;
 
 pub struct HdrPlugin;
 
@@ -20,7 +19,7 @@ fn make_hdr_compatible(
 ) {
     let entity = add.entity;
     let mut camera = cameras.get_mut(entity).unwrap();
-    if camera.order == shared::CameraOrder::World as isize {
+    if camera.order == super::CameraOrder::World as isize {
         // Use the world model camera to determine tonemapping.
         return;
     }

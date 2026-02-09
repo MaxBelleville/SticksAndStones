@@ -11,7 +11,7 @@ use bevy::{
     prelude::*,
 };
 
-use crate::shared;
+use crate::renderer;
 use crate::ui;
 
 pub struct GamePlugins;
@@ -72,14 +72,14 @@ fn spawn_view_model(mut commands: Commands) {
                     ..default()
                 }),
                 Camera {
-                    order: shared::CameraOrder::World.into(),
+                    order: renderer::CameraOrder::World.into(),
                     clear_color: Color::srgb_u8(15, 9, 20).into(),
                     ..default()
                 },
                 RenderLayers::from(
-                    shared::RenderLayer::DEFAULT
-                        | shared::RenderLayer::PARTICLES
-                        | shared::RenderLayer::GIZMO3,
+                    renderer::RenderLayer::DEFAULT
+                        | renderer::RenderLayer::PARTICLES
+                        | renderer::RenderLayer::GIZMO3,
                 ),
                 (Msaa::Off, DeferredPrepass),
             ));
@@ -89,7 +89,7 @@ fn spawn_view_model(mut commands: Commands) {
                 Camera3d::default(),
                 Camera {
                     // Bump the order to render on top of the world model.
-                    order: shared::CameraOrder::ViewModel.into(),
+                    order: renderer::CameraOrder::ViewModel.into(),
                     ..default()
                 },
                 Projection::from(PerspectiveProjection {
@@ -100,7 +100,7 @@ fn spawn_view_model(mut commands: Commands) {
                     ..default()
                 }),
                 // Only render objects belonging to the view model.
-                RenderLayers::from(shared::RenderLayer::VIEW_MODEL),
+                RenderLayers::from(renderer::RenderLayer::VIEW_MODEL),
                 (DepthPrepass, Msaa::Off, DeferredPrepass, Fxaa::default()),
             ));
         });

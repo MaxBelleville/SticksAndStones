@@ -12,6 +12,14 @@ use std::collections::HashMap;
 
 use sns_core::prelude::*;
 
+/*
+    What is a baseplate?
+    The foundation of the world generation, which everything else stems off of.
+    Using biome, subbiome, region and climate baseplates we can sample a large area around the camera
+    Which will be used to determine the aproximate world geometry, as well as determine structures/features.
+    Baseplates are completely 2D, and using an ambassor link up to 3d brickhub/brick map terrain.
+*/
+
 pub struct ClimatePlate {
     region_plate: region::RegionPlate,
     biome_plate: biome::BiomePlate,

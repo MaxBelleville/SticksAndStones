@@ -7,6 +7,16 @@ use bevy_math::*;
 
 use std::collections::HashMap;
 
+/*
+    What is a brick hub?
+    Brickhub is a spatial hashed container of brickmaps + material buckets, where each brickmap contains 8x8x8 bricks.
+    And also each brick contains 8x8x8 voxels as well as lod masks. 
+    Work based losely on: https://nva.sikt.no/registration/0198ea9104d9-15642a8d-7b03-45bc-9463-aaa920c8dd4b
+    Code for paper: https://github.com/Avokadoen/zig_vulkan
+    and super cell code: https://github.com/stijnherfst/BrickMap/tree/master
+*/
+
+
 // --- Constants (Adjust these to match your headers) ---
 pub const BRICK_SIZE: usize = 8;
 pub const VOXELS_PER_BRICK: usize = BRICK_SIZE * BRICK_SIZE * BRICK_SIZE; // 512

@@ -175,7 +175,7 @@ fn on_click(
             if let Some(_game) = game_state {
                 next_game.unwrap().set(ui::GameState::Normal);
             } else {
-                next_manager.set(ui::ManagerState::StartLoadingGame);
+                next_manager.set(ui::ManagerState::LoadingGame);
                 next_menu.set(ui::MenuState::Disabled);
             }
         }

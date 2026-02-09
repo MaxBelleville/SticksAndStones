@@ -1,19 +1,16 @@
-use bevy::{camera::visibility::RenderLayers, prelude::*};
-
+use bevy::{prelude::*, camera::visibility::RenderLayers};
 use bitflags::bitflags;
-pub mod components;
-pub mod res;
+mod hdr;
 
-// Generic system that takes a component as a parameter, and will despawn all entities with that component
-pub fn despawn<T: Component>(to_despawn: Query<Entity, With<T>>, mut commands: Commands) {
-    for entity in &to_despawn {
-        commands.entity(entity).despawn();
+pub struct RendererPlugin;
+
+impl Plugin for RendererPlugin {
+    fn build(&self, app: &mut App) {
+         app.add_plugins(hdr::HdrPlugin);
     }
 }
 
-/// This enum is converted to an `isize` to be used as a camera's order.
-/// Since we have three camera, we use three enum variants.
-/// This ordering here mean UI > ViewModel > World.
+
 pub enum CameraOrder {
     World,
     ViewModel,

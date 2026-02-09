@@ -5,25 +5,16 @@ pub struct LoadPlugin;
 
 impl Plugin for LoadPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
-            ProgressPlugin::<ui::ManagerState>::new().with_state_transition(
-                ui::ManagerState::StartLoadingGame,
-                ui::ManagerState::InGame,
-            ),
-        )
-        .add_systems(
-            OnEnter(ui::ManagerState::StartLoadingGame),
-            start_game_setup,
-        )
-        .add_systems(
-            Update,
-            (
-                mouse_clicks.track_progress_and_stop::<ui::ManagerState>(),
-                update_progress_entity,
-                update_progress_bar,
-            )
-                .run_if(in_state(ui::ManagerState::StartLoadingGame)),
-        );
+        app.add_systems(OnEnter(ui::ManagerState::LoadingGame), start_game_setup)
+            .add_systems(
+                Update,
+                (
+                    mouse_clicks.track_progress_and_stop::<ui::ManagerState>(),
+                    update_progress_entity,
+                    update_progress_bar,
+                )
+                    .run_if(in_state(ui::ManagerState::LoadingGame)),
+            );
     }
 }
 
@@ -57,7 +48,7 @@ fn start_game_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn(ui::components::menu_bg(
             main_bg,
-            ui::ManagerState::StartLoadingGame,
+            ui::ManagerState::LoadingGame,
             OnLoading,
             JustifyContent::Center,
             AlignItems::Center,

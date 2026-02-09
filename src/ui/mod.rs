@@ -1,7 +1,7 @@
 use bevy::{app::PluginGroupBuilder, prelude::*, render::extract_resource::ExtractResource};
 
-use super::shared;
-pub struct UIPlugins;
+use crate::renderer;
+
 mod components;
 mod game;
 mod load;
@@ -16,7 +16,7 @@ pub enum ManagerState {
     #[default]
     Splash,
     InMenu,
-    StartLoadingGame,
+    LoadingGame,
     InGame,
 }
 
@@ -60,6 +60,7 @@ pub fn sync_manager_state(
     extracted.0 = *state.get();
 }
 
+pub struct UIPlugins;
 
 impl PluginGroup for UIPlugins {
     fn build(self) -> PluginGroupBuilder {
@@ -89,7 +90,7 @@ fn setup(mut commands: Commands) {
         Camera2d,
         IsDefaultUiCamera,
         Camera {
-            order: shared::CameraOrder::Ui.into(), // Render second (on top)
+            order: renderer::CameraOrder::Ui.into(), // Render second (on top)
             ..default()
         },
 

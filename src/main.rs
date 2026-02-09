@@ -1,13 +1,13 @@
 use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, pbr::DefaultOpaqueRendererMethod, prelude::*};
 use bevy_skein::SkeinPlugin;
+use iyes_progress::ProgressPlugin;
 
 mod ui;
-mod shared;
 mod window;
-mod world_gen;
+mod ambassadors;
 mod net;
-mod hdr;
 
+mod renderer;
 
 fn main() {
     App::new()
@@ -20,9 +20,11 @@ fn main() {
             window::WindowPlugin,
             SkeinPlugin::default(),
             ui::UIPlugins,
-            world_gen::WorldGenPlugin,
+            ProgressPlugin::<ui::ManagerState>::new()
+                .with_state_transition(ui::ManagerState::LoadingGame, ui::ManagerState::InGame),
             net::NetPlugin,
-            hdr::HdrPlugin,
+            ambassadors::AmbassorPlugins,
+            renderer::RendererPlugin
         ))
         .add_systems(Update, ui::sync_manager_state)
         .run();
