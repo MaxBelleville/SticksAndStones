@@ -11,3 +11,7 @@ impl PluginGroup for AmbassorPlugins {
         PluginGroupBuilder::start::<Self>().add_group(load::LoadPlugins)
     }
 }
+
+pub mod prelude {
+    pub use crate::ambassadors::load::LoadState;
+}

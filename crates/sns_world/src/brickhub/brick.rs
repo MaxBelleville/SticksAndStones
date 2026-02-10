@@ -1,13 +1,15 @@
 use bevy_math::prelude::*;
-
+use bytemuck;
 use super::index;
-
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Brick {
     /// 1 bit per voxel (512 bits)
     occupancy: [u64; 8], // 8 * 64 = 512 bits
     lod_mask_4x4x4: u64,
     lod_mask_2x2x2: u8,
-    lod_mask_1x1x1: bool,
+    lod_mask_1x1x1: u8,
+    pub _pad: [u8; 2],
 
     // u8 per voxel mat index
     start_index: index::StartIndex,
@@ -18,7 +20,8 @@ impl Default for Brick {
             occupancy: [0; 8],
             lod_mask_4x4x4: 0,
             lod_mask_2x2x2: 0,
-            lod_mask_1x1x1: false,
+            lod_mask_1x1x1: 0,
+            _pad: [0; 2],
             start_index: index::UNSET_START_INDEX,
         }
     }
@@ -99,7 +102,7 @@ impl Brick {
     pub fn set_lod(&mut self, coord: UVec3) {
         self.lod_mask_4x4x4 |= 1u64 << self.get_lod_4x4x4_idx(coord);
         self.lod_mask_2x2x2 |= 1u8 << self.get_lod_2x2x2_idx(coord);
-        self.lod_mask_1x1x1 = true;
+        self.lod_mask_1x1x1 = 1;
     }
 
     pub fn clear_lod(&mut self, coord: UVec3) {
@@ -107,11 +110,11 @@ impl Brick {
             self.lod_mask_4x4x4 &= !(1u64 << self.get_lod_4x4x4_idx(coord));
             if self.lod_mask_4x4x4 == 0 {
                 self.lod_mask_2x2x2 = 0;
-                self.lod_mask_1x1x1 = false;
+                self.lod_mask_1x1x1 = 0;
             } else if !self.any_voxel_2x2x2(coord) {
                 self.lod_mask_2x2x2 &= !(1u8 << self.get_lod_2x2x2_idx(coord));
                 if self.lod_mask_2x2x2 == 0 {
-                    self.lod_mask_1x1x1 = false;
+                    self.lod_mask_1x1x1 = 0;
                 }
             }
         }

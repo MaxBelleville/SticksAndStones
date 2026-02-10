@@ -1,9 +1,10 @@
+use crate::sns_prelude::*;
 use crate::ui;
 use bevy::app::AppExit;
 use bevy::{app::PluginGroupBuilder, prelude::*};
 pub struct MenuPlugins;
 
-mod load_games;
+mod load_save;
 mod multiplayer;
 mod new_game;
 mod save_games;
@@ -13,7 +14,7 @@ impl PluginGroup for MenuPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
         .add(MenuPlugin)
-        .add(load_games::LoadGamePlugin)
+        .add(load_save::LoadSavePlugin)
         .add(multiplayer::MultiplayerPlugin)
         .add(new_game::NewGamePlugin)
         .add(save_games::SaveGamePlugin)
@@ -162,6 +163,7 @@ fn on_click(
     query: Query<&ui::ButtonLabel>,
     mut next_manager: ResMut<NextState<ui::ManagerState>>,
     mut next_menu: ResMut<NextState<ui::MenuState>>,
+    mut next_load: ResMut<NextState<LoadState>>,
     next_game: Option<ResMut<NextState<ui::GameState>>>,
     game_state: Option<Res<State<ui::GameState>>>,
     mut exit: MessageWriter<AppExit>,
@@ -176,14 +178,15 @@ fn on_click(
                 next_game.unwrap().set(ui::GameState::Normal);
             } else {
                 next_manager.set(ui::ManagerState::LoadingGame);
+                next_load.set(LoadState::ServerStarting);
                 next_menu.set(ui::MenuState::Disabled);
             }
         }
         "New Game" => {
             next_menu.set(ui::MenuState::NewGame);
         }
-        "Load Game" => {
-            next_menu.set(ui::MenuState::LoadGame);
+        "Load Save" => {
+            next_menu.set(ui::MenuState::LoadSave);
         }
         "Multiplayer" => {
             next_menu.set(ui::MenuState::Multiplayer);

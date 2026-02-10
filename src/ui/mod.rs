@@ -27,7 +27,7 @@ pub enum MenuState {
     Main,
     Settings,
     Multiplayer,
-    LoadGame,
+    LoadSave,
     SaveGame,
     NewGame,
     Pause,
@@ -72,7 +72,6 @@ impl PluginGroup for UIPlugins {
             .add_group(game::GamePlugins)
     }
 }
-
 
 pub struct UIPlugin;
 

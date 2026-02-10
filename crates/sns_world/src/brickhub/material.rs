@@ -4,10 +4,10 @@ use super::VOXELS_PER_BRICK;
 
 #[derive(Default)]
 pub struct MaterialAllocator {
-    material_indices: Vec<u8>,
+    material_indices: Vec<u16>,
     materials: Vec<u16>,        // flat array
     /// Lookup table for deduplication (CPU-only)
-    material_lookup: HashMap<u16, u8>,
+    material_lookup: HashMap<u16, u16>,
     next_voxel_index: AtomicU32,      // offset cursor
 }
 
@@ -31,25 +31,29 @@ impl MaterialAllocator {
         );
         start
     }
-    pub fn write_shared_mat(&mut self, material: u16) -> u8 {
+    pub fn write_shared_mat(&mut self, material: u16) -> u16 {
         if let Some(&idx) = self.material_lookup.get(&material) {
             return idx;
         }
 
-        let idx = self.materials.len() as u8;
-        assert!(idx < u8::MAX);
+        let idx = self.materials.len() as u16;
+        assert!(idx < u16::MAX);
 
         self.materials.push(material);
         self.material_lookup.insert(material, idx);
         idx
     }
 
-    pub fn write_index(&mut self, index: usize, material_id: u8) { 
+    pub fn write_index(&mut self, index: usize, material_id: u16) { 
         self.material_indices[index] = material_id;
     }
  
     pub fn clear_id(&mut self, index: usize) {
         self.material_indices[index] = 0;
+    }
+
+    pub fn slice(&self, base: usize, count: usize) -> &[u16] {
+        &self.material_indices[base..base + count]
     }
 
 }

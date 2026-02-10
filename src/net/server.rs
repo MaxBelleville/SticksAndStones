@@ -3,10 +3,24 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use std::vec;
 
+use bevy::ecs::resource::Resource;
 use bevy::log::info;
 
+#[derive(Resource)]
 pub struct LocalServer {
-    _process: Child,
+    process: Child,
+    singeplayer: bool,
+}
+
+#[derive(Resource, Default)]
+pub struct DatabaseBuilt(bool);
+impl DatabaseBuilt  {
+    pub fn get(&self) -> bool {
+        self.0
+    }
+    pub fn set(&mut self, val: bool) {
+        self.0 = val;
+    }
 }
 
 impl LocalServer {
@@ -44,21 +58,22 @@ impl LocalServer {
         let timeout = Duration::from_secs(5);
 
         info!("Waiting for local SpacetimeDB to boot...");
-        while TcpStream::connect("127.0.0.1:3000").is_err() {
-            if start.elapsed() > timeout {
-                panic!("SpacetimeDB failed to start within 5 seconds.");
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
+        Self { process: child, singeplayer: is_single_player }
+    }
+    //Check if server is done booting
+    pub fn is_ready(&self) -> bool {
+         let Ok(_) = TcpStream::connect("127.0.0.1:3000") else {
+            return false;
+        };
+        true
+    }
 
-        info!("Server is live!");
-        Self { _process: child }
-    }
     pub fn stop(&mut self) {
-        self._process.kill().unwrap();
+        self.process.kill().unwrap();
     }
-    pub fn is_running(&mut self) -> bool {
-        self._process.try_wait().unwrap().is_none()
+    //Check if the proccess is alive(doesn't care if server's done booting).
+    pub fn is_alive(&mut self) -> bool {
+        self.process.try_wait().ok().flatten().is_none()
     }
     pub fn restart(&mut self, is_single_player: bool) -> Self {
         self.stop();

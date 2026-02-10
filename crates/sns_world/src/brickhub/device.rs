@@ -1,45 +1,35 @@
-use std::sync::atomic::AtomicU32;
 use super::brick;
 use bevy_math::*;
-use sns_core::prelude::GpuBuffer;
+use sns_core::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct HubDevice {
-    /// bricks per axis in a cell
-    brick_dim: UVec3,
+    pub bricks: GpuBuffer<brick::Brick>,
+    pub materials: GpuBuffer<u16>,
+    pub indices: GpuBuffer<u32>,
+}
+impl HubDevice {
+    pub fn ensure_capacity(
+        &mut self,
+        gpu: &dyn GpuDevice,
+        brick_cap: usize,
+        material_cap: usize,
+        index_cap: usize,
+    ) {
+        if self.bricks.capacity() < brick_cap {
+            self.bricks.grow(gpu, brick_cap.next_power_of_two(), true);
+        }
 
-    /// total voxels per axis in the hub or clipmap region
-    voxel_dim: UVec3,
+        if self.materials.capacity() < material_cap {
+            self.materials.grow(gpu, material_cap.next_power_of_two(), true);
+        }
 
-    /// World-space scale per voxel
-    voxel_scale: f32,
-
-    /// Padding for alignment
-    _pad0: u32,
-
-    /// Raymarch minimum step
-    min_point_base: Vec4,
-
-    /// Max bounds and brick scale
-    max_point_scale: Vec4,
+        if self.indices.capacity() < index_cap {
+            self.indices.grow(gpu, index_cap.next_power_of_two(), true);
+        }
+    }
 }
 
-
-#[derive(Clone, Copy,Default)]
-pub struct BrickLoadRequest {
-    cell: IVec3,
-    brick_index: u32,
-}
-#[derive(Default)]
-pub struct HubDeviceQueue {
-    brick_load_queue: Vec<BrickLoadRequest>,
-    brick_load_count: AtomicU32,
-
-    brick_upload_buffer: GpuBuffer<brick::Brick>,
-    index_upload_buffer: GpuBuffer<u32>,
-
-    material_upload_buffer: GpuBuffer<u16>,
-}
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum DeltaState {
@@ -54,44 +44,41 @@ pub struct DeviceDataDelta {
 }
 impl Default for DeviceDataDelta {
     fn default() -> Self {
-         Self {
+        Self {
             state: DeltaState::Inactive,
-            range: (usize::MAX,0)
+            range: (usize::MAX, 0),
         }
     }
 }
 
 impl DeviceDataDelta {
-    #[inline]
     pub fn reset(&mut self) {
         self.state = DeltaState::Inactive;
-        self.range = (usize::MAX,0);
+        self.range = (usize::MAX, 0);
     }
 
-    #[inline]
     pub fn register(&mut self, index: usize) {
         self.state = DeltaState::Active;
         self.range = (self.range.0.min(index), self.range.1.max(index + 1));
     }
 
-    #[inline]
     pub fn register_range(&mut self, from: usize, to: usize) {
         self.state = DeltaState::Active;
         self.range = (self.range.0.min(from), self.range.1.max(to));
     }
+    pub fn is_active(&self) -> bool {
+        self.state == DeltaState::Active
+    }
+    pub fn get_range(&self) -> (usize, usize) {
+        self.range
+    }
 }
 #[derive(Default)]
 pub struct CellDeviceState {
-     // CPU → GPU deltas
+    // CPU → GPU deltas
     brick_delta: DeviceDataDelta,
     material_delta: DeviceDataDelta,
     index_delta: DeviceDataDelta,
-
-      // GPU residency
-    gpu_brick_capacity: usize,
-    gpu_brick_count: usize,
-    gpu_bricks: GpuBuffer<brick::Brick>,
-    gpu_indices: GpuBuffer<u32>,
 }
 impl CellDeviceState {
     pub fn get_brick_delta_mut(&mut self) -> &mut DeviceDataDelta {
@@ -100,7 +87,17 @@ impl CellDeviceState {
     pub fn get_material_delta_mut(&mut self) -> &mut DeviceDataDelta {
         &mut self.material_delta
     }
-    pub fn get_index_delta_mut(&mut self) -> &mut DeviceDataDelta { 
+    pub fn get_index_delta_mut(&mut self) -> &mut DeviceDataDelta {
         &mut self.index_delta
     }
+    pub fn get_brick_delta(&self) -> &DeviceDataDelta {
+        &self.brick_delta
+    }
+    pub fn get_material_delta(&self) -> &DeviceDataDelta {
+        &self.material_delta
+    } 
+    pub fn get_index_delta(&self) -> &DeviceDataDelta {
+        &self.index_delta
+    }
+
 }

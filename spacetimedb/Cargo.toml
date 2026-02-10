@@ -14,3 +14,4 @@ members = []
 [dependencies]
 spacetimedb = "1.11.1"
 log = "0.4"
+bevy_math = "0.18.0"

@@ -62,26 +62,26 @@ impl<T> LinearAllocator<T> {
         }
     }
 
-    #[inline]
     pub fn allocate(&mut self, value: T) -> usize {
         let index = self.storage.len();
         self.storage.push(value);
         index
     }
 
-    #[inline]
+   
     pub fn get(&self, index: usize) -> &T {
         &self.storage[index]
     }
 
-    #[inline]
     pub fn get_mut(&mut self, index: usize) -> &mut T {
         &mut self.storage[index]
     }
 
-    #[inline]
     pub fn clear(&mut self) {
         self.storage.clear();
+    }
+    pub fn slice(&self, start: usize, count: usize) -> &[T] {
+        &self.storage[start..start + count]
     }
 
     pub fn as_slice(&self) -> &[T] {
@@ -89,7 +89,7 @@ impl<T> LinearAllocator<T> {
     }
 }
 
-#[derive(Default)]
+#[derive(Default,Clone,Copy)]
 pub struct GpuBuffer<T> {
     /// Backend-specific handle (VkBuffer, CUdeviceptr, wgpu::Buffer, etc.)
     handle: GpuBufferHandle,

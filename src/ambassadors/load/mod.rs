@@ -1,7 +1,7 @@
 use bevy::{app::PluginGroupBuilder, prelude::*};
-use crate::ui;
+mod server;
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
-enum LoadState {
+pub enum LoadState {
     #[default]
     Boot,   //App start
     ServerStarting,
@@ -18,6 +18,7 @@ impl PluginGroup for LoadPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
         .add(LoadPlugin)
+        .add(server::ServerPlugin)
     }
 }
 

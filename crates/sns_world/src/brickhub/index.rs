@@ -1,5 +1,8 @@
+use crate::brickhub::index;
+
 use super::{BRICKHUB_CELL_SIZE, BRICKS_PER_CELL};
 use bevy_math::*;
+use bytemuck;
 #[repr(C)]
 
 pub struct IndexGrid {
@@ -30,10 +33,13 @@ impl IndexGrid {
     pub fn clear(&mut self, coord: UVec3) {
         self.indices[Self::index(coord)] = 0;
     }   
-
-    pub fn raw(&self) -> &[u32] {
-        &self.indices
+    pub fn raw_index(&self, index: u32) -> u32 {
+        self.indices[index as usize]
     }
+    pub fn slice(&self, start: usize, count: usize) -> &[u32] {
+        &self.indices[start..start + count]
+    }
+    
 }
 #[repr(u32)]
 pub enum IndexType {
@@ -42,7 +48,7 @@ pub enum IndexType {
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct StartIndex(pub u32);
 
 impl StartIndex {

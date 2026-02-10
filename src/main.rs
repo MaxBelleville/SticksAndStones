@@ -2,10 +2,10 @@ use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, pbr::DefaultOpaqueRendererMet
 use bevy_skein::SkeinPlugin;
 use iyes_progress::ProgressPlugin;
 
-mod ui;
-mod window;
 mod ambassadors;
 mod net;
+mod ui;
+mod window;
 
 mod renderer;
 
@@ -22,11 +22,14 @@ fn main() {
             ui::UIPlugins,
             ProgressPlugin::<ui::ManagerState>::new()
                 .with_state_transition(ui::ManagerState::LoadingGame, ui::ManagerState::InGame),
-            net::NetPlugin,
+            net::client::ClientPlugin,
             ambassadors::AmbassorPlugins,
-            renderer::RendererPlugin
+            renderer::RendererPlugin,
         ))
         .add_systems(Update, ui::sync_manager_state)
         .run();
 }
-
+//Simplify accessing larger path namespaces
+pub mod sns_prelude {
+    pub use crate::ambassadors::prelude::*;
+}

@@ -65,7 +65,7 @@ impl BrickMap {
         }
 
         // --- Compute voxel index within brick ---
-        let voxel_index = voxel_in_brick(UVec3::new(voxel.x, flipped_y, voxel.z)) as usize;
+        let voxel_index = super::voxel_in_brick(UVec3::new(voxel.x, flipped_y, voxel.z)) as usize;
 
         // --- Ensure material start index ---
         let material_base_allocated = if brick.get_start_index().is_unset() {
@@ -75,7 +75,7 @@ impl BrickMap {
         } else {
             None
         };
-        let material_id: u8 = self.material_allocator.write_shared_mat(material);
+        let material_id: u16 = self.material_allocator.write_shared_mat(material);
         let voxel_offset = brick.get_start_index().value() as usize + voxel_index;
         self.material_allocator.write_index(voxel_offset, material_id);
 
@@ -101,7 +101,7 @@ impl BrickMap {
         let brick_index = self.index_grid.get(brick_coord)? as usize;
         let brick = self.brick_allocator.get_mut(brick_index);
 
-        let voxel_index = voxel_in_brick(UVec3::new(voxel.x, flipped_y, voxel.z)) as usize;
+        let voxel_index = super::voxel_in_brick(UVec3::new(voxel.x, flipped_y, voxel.z)) as usize;
 
         let word = voxel_index >> 6;
         let bit = voxel_index & 63;
@@ -140,6 +140,16 @@ impl BrickMap {
         self.brick_status_grid = brick::BrickStatusGrid::default();
         self.active_bricks = 0;
     }
+
+    pub fn get_brick_allocator(&self) -> &LinearAllocator<brick::Brick> {
+        &self.brick_allocator
+    }
+    pub fn get_material_allocator(&self) -> &material::MaterialAllocator {
+        &self.material_allocator
+    }
+    pub fn get_index_grid(&self) -> &index::IndexGrid {
+        &self.index_grid
+    }
 }
 
 pub struct BrickChange {
@@ -166,11 +176,4 @@ impl BrickChange {
     pub fn get_mat_index(&self) -> usize {
         self.material_index
     }
-}
-#[inline]
-pub fn voxel_in_brick(voxel: UVec3) -> u32 {
-    let bx = voxel.x & (BRICK_SIZE as u32 - 1);
-    let by = voxel.y & (BRICK_SIZE as u32 - 1);
-    let bz = voxel.z & (BRICK_SIZE as u32 - 1);
-    bx + BRICK_SIZE as u32 * (bz + BRICK_SIZE as u32 * by)
 }
