@@ -7,5 +7,7 @@ edition = "2024"
 num-traits = "0.2.19"
 bytemuck = {workspace = true}
 bevy_math = {workspace = true}
+smallvec = {workspace = true}
+
 sns_core = {path = "../sns_core"}
 sns_macros = {path = "../sns_macros"}

@@ -1,20 +1,22 @@
 use std::{collections::HashMap, sync::atomic::{AtomicU32, Ordering}};
 
+use crate::prelude::{MaterialID, MaterialIndex};
+
 use super::VOXELS_PER_BRICK;
 
 #[derive(Default)]
 pub struct MaterialAllocator {
-    material_indices: Vec<u16>,
-    materials: Vec<u16>,        // flat array
+    material_bucket: Vec<MaterialID>,
+    materials: Vec<MaterialID>,        // flat array
     /// Lookup table for deduplication (CPU-only)
-    material_lookup: HashMap<u16, u16>,
+    material_lookup: HashMap<MaterialID, MaterialIndex>,
     next_voxel_index: AtomicU32,      // offset cursor
 }
 
 impl MaterialAllocator {
     pub fn new(capacity: usize) -> Self {
         Self {
-            material_indices: vec![0; capacity],
+            material_bucket: vec![0; capacity],
             materials: Vec::new(),
             material_lookup: HashMap::new(),
             next_voxel_index: AtomicU32::new(0),
@@ -27,16 +29,16 @@ impl MaterialAllocator {
             Ordering::Relaxed,
         );
         assert!(
-            (start as usize) + VOXELS_PER_BRICK <= self.material_indices.len()
+            (start as usize) + VOXELS_PER_BRICK <= self.material_bucket.len()
         );
         start
     }
-    pub fn write_shared_mat(&mut self, material: u16) -> u16 {
+    pub fn write_shared_mat(&mut self, material: MaterialID) -> MaterialIndex {
         if let Some(&idx) = self.material_lookup.get(&material) {
             return idx;
         }
 
-        let idx = self.materials.len() as u16;
+        let idx = self.materials.len() as MaterialIndex;
         assert!(idx < u16::MAX);
 
         self.materials.push(material);
@@ -44,16 +46,19 @@ impl MaterialAllocator {
         idx
     }
 
-    pub fn write_index(&mut self, index: usize, material_id: u16) { 
-        self.material_indices[index] = material_id;
+    pub fn write_bucket_index(&mut self, index: usize, material: MaterialID) { 
+        self.material_bucket[index] = material;
     }
  
-    pub fn clear_id(&mut self, index: usize) {
-        self.material_indices[index] = 0;
+    pub fn remove_bucket_index(&mut self, index: usize) {
+        self.material_bucket[index] = 0;
     }
 
-    pub fn slice(&self, base: usize, count: usize) -> &[u16] {
-        &self.material_indices[base..base + count]
+    pub fn slice_bucket(&self, base: usize, count: usize) -> &[MaterialID] {
+        &self.material_bucket[base..base + count]
     }
+
+
+
 
 }

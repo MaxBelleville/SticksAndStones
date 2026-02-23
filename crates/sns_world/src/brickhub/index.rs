@@ -1,24 +1,23 @@
-use crate::brickhub::index;
-
-use super::{BRICKHUB_CELL_SIZE, BRICKS_PER_CELL};
+use std::marker::PhantomData;
+use super::{BRICKMAP_SIZE, BRICKS_PER_BRICKMAP};
 use bevy_math::*;
-use bytemuck;
+use bytemuck::{self, Pod, Zeroable};
 #[repr(C)]
 
 pub struct IndexGrid {
-    indices: [u32; BRICKS_PER_CELL],
+    indices: [u32; BRICKS_PER_BRICKMAP],
 }
 
 impl Default for IndexGrid {
     fn default() -> Self {
         Self {
-            indices: [0; BRICKS_PER_CELL],
+            indices: [0; BRICKS_PER_BRICKMAP],
         }
     }
 }
 impl IndexGrid {
     pub fn index(coord: UVec3) -> usize {
-        let cell_size = BRICKHUB_CELL_SIZE as u32;
+        let cell_size = BRICKMAP_SIZE as u32;
         (coord.x + coord.y * cell_size + coord.z * cell_size * cell_size) as usize
     }
 
@@ -41,35 +40,60 @@ impl IndexGrid {
     }
     
 }
-#[repr(u32)]
-pub enum IndexType {
-    VoxelStartIndex = 0,
-    BrickLodIndex = 1,
-}
 
+// 1. The "Raw" data type that bytemuck can easily handle
 #[repr(transparent)]
-#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct StartIndex(pub u32);
-
-impl StartIndex {
-    pub fn new(value: u32, kind: IndexType) -> Self {
-        StartIndex((value & 0x7FFF_FFFF) | ((kind as u32) << 31))
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Pod, Zeroable)]
+pub struct RawIndex(pub u32);
+impl RawIndex {
+    pub fn is_lod(&self) -> bool  {
+        self.0 & 0x8000_0000 != 0
     }
-
-    pub fn is_unset(self) -> bool {
-        self.0 == u32::MAX
+    pub fn is_unset(&self) -> bool {
+        self.0 == 0
     }
-
-    pub fn value(self) -> u32 {
+    pub fn value(&self) -> u32 {
         self.0 & 0x7FFF_FFFF
     }
+}
 
-    pub fn kind(self) -> IndexType {
-        if self.0 >> 31 == 1 {
-            IndexType::BrickLodIndex
-        } else {
-            IndexType::VoxelStartIndex
+// 2. The Marker Trait
+pub trait IndexKind: Copy + 'static {
+    const FLAG: u32;
+}
+
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+pub struct VoxelKind;
+impl IndexKind for VoxelKind { const FLAG: u32 = 0x0; }
+
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+pub struct LodKind;
+impl IndexKind for LodKind { const FLAG:u32 = 0x8000_0000; }
+
+// 3. The Typed Wrapper (No PhantomData in the Pod struct!)
+#[repr(transparent)]
+pub struct StartIndex<K: IndexKind> {
+    pub raw: RawIndex,
+    _marker: PhantomData<K>,
+}
+impl<K: IndexKind> StartIndex<K> {
+    pub fn new(value: u32) -> Self {
+        debug_assert!(value & 0x8000_0000 == 0, "Index value too large!");
+        Self {
+            raw: RawIndex((value & 0x7FFF_FFFF) | K::FLAG),
+            _marker: PhantomData,
         }
     }
+    pub fn get_raw(&self) -> RawIndex {
+        self.raw
+    }
+    pub fn value(&self) -> u32 {
+        self.raw.value()
+    }
+    pub fn is_unset(&self) -> bool {
+        self.raw.is_unset()
+    }
 }
-pub const UNSET_START_INDEX: StartIndex = StartIndex(u32::MAX);
+
+pub const UNSET_INDEX: u32 = u32::MAX;
+pub const UNSET_RAW_INDEX: RawIndex = RawIndex(u32::MAX);

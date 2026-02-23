@@ -205,3 +205,34 @@ impl<T> GpuBuffer<T> {
         self.capacity = new_capacity;
     }
 }
+
+#[derive(Default,Clone,Copy)]
+pub struct Range<T> {
+    start: T,
+    end: T,
+}
+impl<T> Range<T> 
+    where T: Clone {
+    pub fn new(start: T, end: T) -> Self {
+        Self { start, end }
+    }
+    pub fn set_range(&mut self, start: T, end: T) {
+        self.start = start;
+        self.end = end;
+    }
+    pub fn set_start(&mut self, start: T) {
+        self.start = start;
+    }
+    pub fn set_end(&mut self, end: T) {
+        self.end = end;
+    }
+    pub fn get_range(&self) -> (T,T) {
+        (self.start.clone(), self.end.clone())
+    }
+    pub fn start(&self) -> T {
+        self.start.clone()
+    }
+    pub fn end(&self) -> T {
+        self.end.clone()
+    }
+}

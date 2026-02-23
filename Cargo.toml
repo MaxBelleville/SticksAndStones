@@ -29,6 +29,7 @@ members = ["crates/*"]
 [workspace.dependencies]
 bevy_math = "0.18.0"
 bytemuck = "1.24.0"
+smallvec = "1.15.1"
 bitflags = {version = "2.10.0", features = ["bytemuck"]}
 
 

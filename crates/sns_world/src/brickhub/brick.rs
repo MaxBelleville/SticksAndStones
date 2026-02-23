@@ -11,8 +11,7 @@ pub struct Brick {
     lod_mask_1x1x1: u8,
     pub _pad: [u8; 2],
 
-    // u8 per voxel mat index
-    start_index: index::StartIndex,
+    raw_index: index::RawIndex,
 }
 impl Default for Brick {
     fn default() -> Self {
@@ -22,7 +21,7 @@ impl Default for Brick {
             lod_mask_2x2x2: 0,
             lod_mask_1x1x1: 0,
             _pad: [0; 2],
-            start_index: index::UNSET_START_INDEX,
+            raw_index: index::UNSET_RAW_INDEX,
         }
     }
 }
@@ -43,11 +42,12 @@ impl Brick {
             .map(|&m| m.count_ones() as usize)
             .sum()
     }
-    pub fn get_start_index(&self) -> index::StartIndex {
-        self.start_index
+    pub fn get_raw_index(&self) -> index::RawIndex {
+        self.raw_index
     }
-    pub fn set_start_index(&mut self, start_index: u32, kind: index::IndexType) {
-        self.start_index = index::StartIndex::new(start_index, kind);
+
+    pub fn set_start_index<K: index::IndexKind>(&mut self, start_index: u32) {
+        self.raw_index = index::StartIndex::<K>::new(start_index).get_raw();
     }
     pub fn set_occupancy(&mut self, word: usize, mask: u64) {
         self.occupancy[word] |= mask;
@@ -154,16 +154,16 @@ impl BrickStatusGrid {
         }
     }
 
-    #[inline]
     pub fn set_active(&mut self, brick_index: usize) {
         let word = brick_index >> 5;
         let bit = brick_index & 31;
         self.masks[word].set_loaded(bit as u8);
     }
-    #[inline]
+
     pub fn set_inactive(&mut self, brick_index: usize) {
         let word = brick_index >> 5;
         let bit = brick_index & 31;
         self.masks[word].clear_loaded(bit as u8);
     }
+
 }

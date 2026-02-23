@@ -1,130 +1,55 @@
 
 use bevy_math::*;
-use super::{device,BRICKS_PER_CELL,VOXELS_PER_BRICK,BrickHubCell};
-use std::collections::{HashMap, HashSet};
+use sns_core::prelude::Range;
 
-pub struct BrickUpload {
-    cell_coord: IVec3,
-    brick_index: u32,
-}
-impl BrickUpload {
-    pub fn get_cell_coord(&self) -> IVec3 {
-        self.cell_coord
-    }
-    pub fn get_brick_index(&self) -> u32 {
-        self.brick_index
-    }
-}
 
-pub struct MaterialUpload {
-    cell_coord: IVec3,
-    base: u32,
-    count: u32,
-}
-impl MaterialUpload {
-    pub fn get_cell_coord(&self) -> IVec3 {
-        self.cell_coord
-    }
-    pub fn get_base(&self) -> u32 {
-        self.base
-    }
-    pub fn get_count(&self) -> u32 {
-        self.count
-    }
-}
 
-pub struct IndexUpload {
-    cell_coord: IVec3,
-    index: u32,
-}
-impl IndexUpload {
-    pub fn get_cell_coord(&self) -> IVec3 {
-        self.cell_coord
-    }
-    pub fn get_index(&self) -> u32 {
-        self.index
-    }
-}
+use super::{BRICKS_PER_BRICKMAP,VOXELS_PER_BRICK,CellID,device};
+use std::collections::HashMap;
 
+#[derive(Clone, Copy,Default)]
+pub struct QueuedRange{
+   cell_id: CellID,
+   range: Range<usize>,
+   stream_type: char,
+}
 #[derive(Default)]
-pub struct HubDeviceQueue {
-    brick_updates: Vec<BrickUpload>,
-    material_updates: Vec<MaterialUpload>,
-    index_updates: Vec<IndexUpload>,
+pub struct DeviceQueue {
+    ranges: Vec<QueuedRange>,
 }
-
-impl HubDeviceQueue {
-    pub fn clear(&mut self) {
-        self.brick_updates.clear();
-        self.material_updates.clear();
-        self.index_updates.clear();
-    }
-    pub fn get_brick_updates(&self) -> &[BrickUpload] {
-        &self.brick_updates
-    }
-    pub fn get_material_updates(&self) -> &[MaterialUpload] {
-        &self.material_updates
+impl DeviceQueue {
+    pub fn aggregate_cell(&mut self, group: &device::CellDeltaGroup) {
+        self.aggregate_stream::<device::BrickStream>(group);
+        self.aggregate_stream::<device::MaterialStream>(group);
+        self.aggregate_stream::<device::IndicesStream>(group);
     }
 
-    pub fn get_index_updates(&self) -> &[IndexUpload] {
-        &self.index_updates
-    }
-    
-     pub fn iter_cells(&self) -> impl Iterator<Item = IVec3> + '_ {
-        self.brick_updates.iter().map(|u| u.cell_coord)
-            .chain(self.material_updates.iter().map(|u| u.cell_coord))
-            .chain(self.index_updates.iter().map(|u| u.cell_coord))
-            .collect::<HashSet<_>>()
-            .into_iter()
-    }
-
-    pub fn aggregate_cell(&mut self, coord: IVec3, cell: &mut device::CellDeviceState) {
-        if let Some((from, to)) = self.aggregate_range(cell.get_brick_delta()) {
-            for brick_index in from..to {
-                self.brick_updates.push(BrickUpload {
-                    cell_coord: coord,
-                    brick_index: brick_index as u32,
-                });
-            }
-        }
-        if let Some((from, to)) = self.aggregate_range(cell.get_material_delta()) {
-            self.material_updates.push(MaterialUpload {
-                cell_coord: coord,
-                base: from as u32,
-                count: (to - from) as u32,
+    pub fn aggregate_stream<S: device::CellStream>(&mut self, group: &device::CellDeltaGroup) {
+        let cell_id = group.get_cell_id();
+        if let Some((from, to)) = group.get_active_range::<S>() {
+            self.ranges.push(QueuedRange {
+                cell_id,
+                stream_type: S::STREAM_TYPE,
+                range: Range::new(from,to)
             });
         }
-
-        if let Some((from, to)) = self.aggregate_range(cell.get_index_delta()) {
-            for index in from..to {
-
-                self.index_updates.push(IndexUpload {
-                    cell_coord: coord,
-                    index: index as u32,
-                });
-            }
-        }
-
-        cell.get_brick_delta_mut().reset();
-        cell.get_material_delta_mut().reset();
-        cell.get_index_delta_mut().reset();
     }
 
-    pub fn aggregate_range(&self, delta: &device::DeviceDataDelta) -> Option<(usize, usize)> {
-        if !delta.is_active() {
-            return None;
-        }
-        Some(delta.get_range())
-    }
-    pub fn remove_cell_updates(&mut self, coord: IVec3) {
-        self.brick_updates.retain(|u| u.cell_coord != coord);
-        self.material_updates.retain(|u| u.cell_coord != coord);
-        self.index_updates.retain(|u| u.cell_coord != coord);
+    pub fn range_from_stream<S: device::CellStream>(&self) -> Vec<&QueuedRange> {
+       self.ranges.iter().filter(|r| r.stream_type == S::STREAM_TYPE).collect()
     }
 
+    pub fn clear(&mut self) {
+        self.ranges.clear();
+    }
+    pub fn commit_cell(group: &mut device::CellDeltaGroup) {
+        group.reset();
+    }
 }
+
+
 #[derive(Clone, Copy)]
-pub struct CellGpuAllocation {
+pub struct CellAllocation {
     brick_base: usize,
     brick_count: usize,
 
@@ -135,7 +60,7 @@ pub struct CellGpuAllocation {
     index_count: usize,
     ring: u8, // future
 }
-impl CellGpuAllocation {
+impl CellAllocation {
     pub fn get_brick_base(&self) -> usize {
         self.brick_base
     }
@@ -214,23 +139,23 @@ impl RangeAllocator {
 }
 
 pub struct CompactionCandidate {
-    coord: IVec3,
-    old_alloc: CellGpuAllocation,
-    new_alloc: Option<CellGpuAllocation>, // will be filled in during compaction
+    coord: IVec3, // cell coord
+    old_alloc: CellAllocation,
+    new_alloc: Option<CellAllocation>, // will be filled in during compaction
 }
 impl CompactionCandidate {
     pub fn get_coord(&self) -> IVec3 {
         self.coord
     }
-    pub fn get_old_alloc(&self) -> &CellGpuAllocation {
+    pub fn get_old_alloc(&self) -> &CellAllocation {
         &self.old_alloc
     }
-    pub fn get_new_alloc(&self) -> Option<&CellGpuAllocation> {
+    pub fn get_new_alloc(&self) -> Option<&CellAllocation> {
         self.new_alloc.as_ref()
     }
-    pub fn from_alloc(alloc: &CellGpuAllocation) -> Self {
+    pub fn from_alloc(alloc: &CellAllocation, coord: IVec3) -> Self {
         Self {
-            coord: IVec3::new(alloc.brick_base as i32, alloc.material_base as i32, alloc.index_base as i32),
+            coord,
             old_alloc: alloc.clone(),
             new_alloc: None,
         }
@@ -238,32 +163,32 @@ impl CompactionCandidate {
 }
 
 #[derive(Default)]
-pub struct HubGpuAllocator {
+pub struct DeviceAllocator {
     bricks: RangeAllocator,
     materials: RangeAllocator,
     indices: RangeAllocator,
 
-    allocations: HashMap<IVec3, CellGpuAllocation>,
+    allocations: HashMap<IVec3, CellAllocation>,
 }
 
 
-impl HubGpuAllocator {
+impl DeviceAllocator {
      pub fn admit_cell(
         &mut self,
         coord: IVec3,
         ring: u8,
-    ) -> &CellGpuAllocation {
+    ) -> &CellAllocation {
         self.allocations.entry(coord).or_insert_with(|| {
-            let brick_count = BRICKS_PER_CELL;
-            let material_count = BRICKS_PER_CELL * VOXELS_PER_BRICK;
-            let index_count = BRICKS_PER_CELL;
+            let brick_count = BRICKS_PER_BRICKMAP;
+            let material_count = BRICKS_PER_BRICKMAP * VOXELS_PER_BRICK;
+            let index_count = BRICKS_PER_BRICKMAP;
 
             // Allocate from free ranges or grow
             let brick_base = self.bricks.alloc(brick_count);
             let material_base = self.materials.alloc(material_count);
             let index_base = self.indices.alloc(index_count);
 
-            CellGpuAllocation {
+            CellAllocation {
                 brick_base,
                 brick_count,
                 material_base,
@@ -285,7 +210,7 @@ impl HubGpuAllocator {
             let material_base = self.materials.alloc(old.material_count);
             let index_base = self.indices.alloc(old.index_count);
 
-            candidate.new_alloc = Some(CellGpuAllocation {
+            candidate.new_alloc = Some(CellAllocation {
                 brick_base,
                 brick_count: old.brick_count,
                 material_base,
@@ -316,33 +241,33 @@ impl HubGpuAllocator {
             || self.indices.has_free_space()
     }
 
-    pub fn select_compaction_candidates(&self, ring: u8) -> Vec<CompactionCandidate> {
+    pub fn select_compaction_candidates(&self, ring: u8,coord: IVec3) -> Vec<CompactionCandidate> {
         self.allocations
             .values()
             .filter(|a| a.get_ring() == ring)
-            .map(|alloc| CompactionCandidate::from_alloc(alloc))
+            .map(|alloc| CompactionCandidate::from_alloc(alloc,coord))
             .take(2) // start small
             .collect()
     }
 
     /// Remove a cell allocation and return it
-    pub fn remove(&mut self, coord: &IVec3) -> Option<CellGpuAllocation> {
+    pub fn remove(&mut self, coord: &IVec3) -> Option<CellAllocation> {
         self.allocations.remove(coord)
     }
 
     /// Free ranges for a removed cell back to RangeAllocator
-    pub fn free_cell_allocation(&mut self, alloc: CellGpuAllocation) {
+    pub fn free_cell_allocation(&mut self, alloc: CellAllocation) {
         self.bricks.free(alloc.brick_base, alloc.brick_count);
         self.materials.free(alloc.material_base, alloc.material_count);
         self.indices.free(alloc.index_base, alloc.index_count);
     }
 
     /// Lookup a cell allocation
-    pub fn get(&self, coord: IVec3) -> Option<&CellGpuAllocation> {
+    pub fn get(&self, coord: IVec3) -> Option<&CellAllocation> {
         self.allocations.get(&coord)
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &CellGpuAllocation> {
+    pub fn values(&self) -> impl Iterator<Item = &CellAllocation> {
         self.allocations.values()
     }
 

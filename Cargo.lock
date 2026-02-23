@@ -5917,6 +5917,7 @@ dependencies = [
  "bevy_math",
  "bytemuck",
  "num-traits",
+ "smallvec",
  "sns_core",
  "sns_macros",
 ]
