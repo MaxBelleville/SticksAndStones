@@ -1,17 +1,16 @@
 
-use std::marker::PhantomData;
-
-use super::{brick,CellID,BrickIndex};
+use super::{BrickIndex, CellID, brick,MaterialID};
 use bevy_math::*;
 use sns_core::prelude::*;
 
 #[derive(Clone, Copy, Default)]
-pub struct DeviceBuffers {
+pub struct Buffers {
     pub bricks: GpuBuffer<brick::Brick>,
     pub materials: GpuBuffer<u16>,
     pub indices: GpuBuffer<u32>,
 }
-impl DeviceBuffers {
+
+impl Buffers {
     pub fn ensure_capacity(
         &mut self,
         gpu: &dyn GpuDevice,
@@ -24,222 +23,114 @@ impl DeviceBuffers {
         }
 
         if self.materials.capacity() < material_cap {
-            self.materials.grow(gpu, material_cap.next_power_of_two(), true);
+            self.materials
+                .grow(gpu, material_cap.next_power_of_two(), true);
         }
 
         if self.indices.capacity() < index_cap {
             self.indices.grow(gpu, index_cap.next_power_of_two(), true);
         }
     }
-}
+    pub fn get_brick_mut(&mut self) -> &mut GpuBuffer<brick::Brick> {
+        &mut self.bricks
+    }
+    pub fn get_material_mut(&mut self) -> &mut GpuBuffer<u16> {
+        &mut self.materials
+    }
+    pub fn get_index_mut(&mut self) -> &mut GpuBuffer<u32> {
+        &mut self.indices
+    }
 
-#[derive(Clone, Copy, Default,PartialEq, Eq)]
-pub struct BrickStream {
-    index: BrickIndex,
 }
-
-#[derive(Clone, Copy, Default,PartialEq, Eq)]
-pub struct MaterialStream {
-    base: u32, 
-    count: u32,
-}
-
-#[derive(Clone, Copy, Default,PartialEq, Eq)]
-pub struct IndicesStream {
-    index: u32,
-}
-
-pub trait CellStream: Default + Clone + Copy {
-    const STREAM_TYPE: char;
-    // We use Default for a basic 'new', or define a custom one
-    fn new() -> Self;
-    
-    fn get_index(&self) -> u32;
-    fn set_index(&mut self, val: u32);
-
-    fn get_extra(&self) -> u32 { 0 }
-    fn set_extra(&mut self, _val: u32) {}
-}
-impl CellStream for BrickStream {
-    const STREAM_TYPE: char = 'B';
-    fn new() -> Self {
-        Self::default()
-    }
-    fn get_index(&self) -> u32 {
-        self.index
-    }
-    fn set_index(&mut self, val: u32) {
-        self.index = val;
-    }
-}
-impl CellStream for MaterialStream {
-    const STREAM_TYPE: char = 'M';
-    fn new() -> Self {
-        Self::default()
-    }
-    fn get_index(&self) -> u32 {
-        self.base
-    }
-    fn set_index(&mut self, val: u32) {
-        self.base = val;
-    }
-    fn get_extra(&self) -> u32 {
-        self.count
-    }
-    fn set_extra(&mut self, val: u32) {
-        self.count = val;
-    }
-}
-impl CellStream for IndicesStream {
-    const STREAM_TYPE: char = 'I';
-    fn new() -> Self {
-        Self::default()
-    }
-    fn get_index(&self) -> u32 {
-        self.index
-    }
-    fn set_index(&mut self, val: u32) {
-        self.index = val;
-    }
-}
-
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
 pub enum DeltaState {
     #[default]
     Inactive,
-    Invalid,
     Active,
+    Invalid,
 }
 #[derive(Clone, Copy)]
-pub struct CellDelta<S: CellStream>{
-   range: Range<usize>,
-   state: DeltaState,
-   stream: PhantomData<S>,
-}
-
-impl<S: CellStream> Default for CellDelta<S> {
-    fn default() -> Self {
-        Self {
-            range: Range::new(usize::MAX, 0),
-            state: DeltaState::Inactive,
-            stream: PhantomData::default(),
-        }
-    }
-}
-impl<S: CellStream> CellDelta<S> {
-    pub fn reset(&mut self) {
-        self.state = DeltaState::Inactive;
-        self.range.set_range(usize::MAX, 0);
-    }
-
-    pub fn register(&mut self, index: usize) {
-        self.state = DeltaState::Active;
-        self.range.set_start(self.range.start().min(index));
-        self.range.set_end(self.range.end().max(index + 1));
-    }
-
-    pub fn register_range(&mut self, from: usize, to: usize) {
-        self.state = DeltaState::Active;
-        self.range.set_start(self.range.start().min(from));
-        self.range.set_end(self.range.end().max(to));
-    }
-    pub fn is_active(&self) -> bool {
-        self.state == DeltaState::Active
-    }
-    pub fn get_active_range(&self) -> Option<(usize, usize)> {
-        if self.state == DeltaState::Active {
-            Some(self.range.get_range())
-        } else {
-            None
-        }
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CellDeltaGroup {
+pub struct CellRange {
     cell_id: CellID,
-    brick_delta: CellDelta<BrickStream>,
-    material_delta: CellDelta<MaterialStream>,
-    index_delta: CellDelta<IndicesStream>,
+    range: Range<usize>,
 }
-
-impl CellDeltaGroup {
-    pub fn new(cell_id: CellID) -> Self {
-        Self {
-            cell_id,
-            brick_delta: CellDelta::default(),
-            material_delta: CellDelta::default(),
-            index_delta: CellDelta::default(),
-        }
-    }
-
-    pub fn get_brick_delta(&self) -> &CellDelta<BrickStream> {
-        &self.brick_delta
-    }
-    pub fn get_brick_delta_mut(&mut self) -> &mut CellDelta<BrickStream> {
-        &mut self.brick_delta
-    }
-    pub fn get_material_delta(&self) -> &CellDelta<MaterialStream> {
-        &self.material_delta
-    }
-    pub fn get_material_delta_mut(&mut self) -> &mut CellDelta<MaterialStream> {
-        &mut self.material_delta
-    }
-    pub fn get_index_delta(&self) -> &CellDelta<IndicesStream> {
-        &self.index_delta
-    }
-    pub fn get_index_delta_mut(&mut self) -> &mut CellDelta<IndicesStream> {
-        &mut self.index_delta
-    }
-
-    pub fn get_active_range<S: CellStream>(&self) -> Option<(usize, usize)> {
-        match S::STREAM_TYPE {
-            'B' => self.brick_delta.get_active_range(),
-            'M' => self.material_delta.get_active_range(),
-            'I' => self.index_delta.get_active_range(),
-            _ => panic!("Invalid stream type"),
-        }
-    }
-
-    pub fn is_active<S: CellStream>(&self) -> bool {
-        match S::STREAM_TYPE {
-            'B' => self.brick_delta.is_active(),
-            'M' => self.material_delta.is_active(),
-            'I' => self.index_delta.is_active(),
-            _ => panic!("Invalid stream type"),
-        }
-    }
-
-    pub fn register<S: CellStream>(&mut self, index: usize) {
-        match S::STREAM_TYPE {
-            'B' => self.brick_delta.register(index),
-            'M' => self.material_delta.register(index),
-            'I' => self.index_delta.register(index),
-            _ => panic!("Invalid stream type"),
-        }
-    }
-
-    pub fn register_range<S: CellStream>(&mut self, from: usize, to: usize) {
-        match S::STREAM_TYPE {
-            'B' => self.brick_delta.register_range(from,to),
-            'M' => self.material_delta.register_range(from,to),
-            'I' => self.index_delta.register_range(from,to),
-            _ => panic!("Invalid stream type"),
-        }
-    }
-
-
-    pub fn get_stream_type<S: CellStream>(&self) -> char {
-        S::STREAM_TYPE
-    }
-
-    pub fn get_cell_id(&self) -> CellID {
+impl CellRange {
+    pub fn get_id(&self) -> CellID {
         self.cell_id
     }
-    pub fn reset(&mut self) {
-        self.brick_delta.reset();
-        self.material_delta.reset();
-        self.index_delta.reset();
+    pub fn get_range(&self) -> &Range<usize>{
+        &self.range
     }
+}
 
+#[derive(Default)]
+pub struct DeltaBatch {
+    brick_ranges: Vec<CellRange>,
+    material_ranges: Vec<CellRange>,
+    index_ranges: Vec<CellRange>,
+}
+impl DeltaBatch {
+    pub fn take_and_push(&mut self, id: CellID, delta: &mut super::allocators::CellDelta) {
+        if let Some((from, to)) = delta.take(StorageType::Brick) {
+            self.register_range(id, StorageType::Brick, from, to);
+        }
+        if let Some((from, to)) = delta.take(StorageType::Indices) {
+            self.register_range(id, StorageType::Brick, from, to);
+        }
+        if let Some((from, to)) = delta.take(StorageType::Material) {
+            self.register_range(id, StorageType::Brick, from, to);
+        }
+    }
+    pub fn register_range(
+        &mut self,
+        id: CellID,
+        storage_type: StorageType,
+        from: usize,
+        to: usize,
+    ) {
+        match storage_type {
+            StorageType::Brick => {
+                self.brick_ranges.push(CellRange {
+                    cell_id: id,
+                    range: Range::new(from, to),
+                });
+            }
+            StorageType::Material => {
+                self.material_ranges.push(CellRange {
+                    cell_id: id,
+                    range: Range::new(from, to),
+                });
+            }
+            StorageType::Indices => {
+                self.index_ranges.push(CellRange {
+                    cell_id: id,
+                    range: Range::new(from, to),
+                });
+            }
+        }
+    }
+    pub fn get_ranges(&self, storage_type: StorageType) -> &Vec<CellRange> {
+        match storage_type {
+            StorageType::Brick => &self.brick_ranges,
+            StorageType::Material => &self.index_ranges,
+            StorageType::Indices => &self.material_ranges,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+pub enum StorageType {
+    Brick,
+    Material,
+    Indices,
+}
+impl StorageType {
+    pub fn element_size(&self) -> usize {
+        match self {
+            StorageType::Brick => std::mem::size_of::<brick::Brick>(),
+            StorageType::Material => std::mem::size_of::<MaterialID>(),
+            StorageType::Indices => std::mem::size_of::<u32>(),
+        }
+    }
 }

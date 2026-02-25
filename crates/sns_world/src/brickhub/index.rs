@@ -38,6 +38,9 @@ impl IndexGrid {
     pub fn slice(&self, start: usize, count: usize) -> &[u32] {
         &self.indices[start..start + count]
     }
+    pub fn slice_range(&self, from: usize, to: usize) -> &[u32] {
+        &self.indices[from..to]
+    }
     
 }
 
@@ -95,5 +98,4 @@ impl<K: IndexKind> StartIndex<K> {
     }
 }
 
-pub const UNSET_INDEX: u32 = u32::MAX;
-pub const UNSET_RAW_INDEX: RawIndex = RawIndex(u32::MAX);
+pub const UNSET_RAW_INDEX: RawIndex = RawIndex(0);

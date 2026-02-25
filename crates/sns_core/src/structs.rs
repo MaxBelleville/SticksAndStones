@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use bevy_math::*;
 use bytemuck::NoUninit;
 use simdnoise::NoiseBuilder;
-use bevy_math::*;
+use std::collections::HashMap;
 
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -26,7 +26,7 @@ pub struct NoiseField {
 }
 
 impl NoiseField {
-    pub fn new(frequency:f32,octaves:u8,gain:f32,lacunarity:f32)->Self {
+    pub fn new(frequency: f32, octaves: u8, gain: f32, lacunarity: f32) -> Self {
         Self {
             frequency,
             octaves,
@@ -48,7 +48,6 @@ impl NoiseField {
             .generate_scaled(0.0, 1.0);
         val[0] * self.mult
     }
-  
 }
 
 pub struct LinearAllocator<T> {
@@ -68,7 +67,6 @@ impl<T> LinearAllocator<T> {
         index
     }
 
-   
     pub fn get(&self, index: usize) -> &T {
         &self.storage[index]
     }
@@ -83,13 +81,16 @@ impl<T> LinearAllocator<T> {
     pub fn slice(&self, start: usize, count: usize) -> &[T] {
         &self.storage[start..start + count]
     }
+    pub fn slice_range(&self, from: usize, to: usize) -> &[T] {
+        &self.storage[from..to]
+    }
 
     pub fn as_slice(&self) -> &[T] {
         &self.storage
     }
 }
 
-#[derive(Default,Clone,Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct GpuBuffer<T> {
     /// Backend-specific handle (VkBuffer, CUdeviceptr, wgpu::Buffer, etc.)
     handle: GpuBufferHandle,
@@ -103,12 +104,12 @@ pub struct GpuBuffer<T> {
     _marker: PhantomData<T>,
 }
 
-#[derive(Clone, Copy,Default)]
+#[derive(Clone, Copy, Default)]
 pub struct GpuBufferHandle {
     raw: u64, // opaque backend handle
 }
 
-#[derive(Clone, Copy,Default)]
+#[derive(Clone, Copy, Default)]
 pub struct GpuBufferUsage {
     pub storage: bool,
     pub transfer_src: bool,
@@ -119,15 +120,18 @@ pub trait GpuDevice {
     fn create_buffer(&self, size: usize, usage: GpuBufferUsage) -> GpuBufferHandle;
     fn destroy_buffer(&self, handle: GpuBufferHandle);
     fn upload_buffer(&self, handle: GpuBufferHandle, offset: usize, data: &[u8], size: usize);
-    fn copy_buffer(&self, src: GpuBufferHandle, dst: GpuBufferHandle, size: usize);
+    fn copy_buffer(
+        &self,
+        src: GpuBufferHandle,
+        src_offset: usize,
+        dst: GpuBufferHandle,
+        dst_offset: usize,
+        size: usize,
+    );
 }
 
 impl<T> GpuBuffer<T> {
-    pub fn new(
-        device: &dyn GpuDevice,
-        capacity: usize,
-        usage: GpuBufferUsage,
-    ) -> Self {
+    pub fn new(device: &dyn GpuDevice, capacity: usize, usage: GpuBufferUsage) -> Self {
         let size_bytes = capacity * size_of::<T>();
 
         let handle = device.create_buffer(size_bytes, usage);
@@ -144,26 +148,40 @@ impl<T> GpuBuffer<T> {
         device.destroy_buffer(self.handle);
     }
 
-    #[inline]
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
-    #[inline]
     pub fn handle(&self) -> GpuBufferHandle {
         self.handle
     }
-}
-
-impl<T> GpuBuffer<T> {
-    pub fn upload_range(
+    pub fn copy_range(
         &self,
         device: &dyn GpuDevice,
-        offset: usize,
-        data: &[T],
-    )
-    where T: NoUninit
-     {
+        src_offset: usize,
+        dst_offset: usize,
+        len: usize,
+    ) {
+        debug_assert!(self.usage.transfer_src);
+        debug_assert!(self.usage.transfer_dst);
+
+        debug_assert!(src_offset + len <= self.capacity);
+        debug_assert!(dst_offset + len <= self.capacity);
+
+        let elem_size = size_of::<T>();
+
+        device.copy_buffer(
+            self.handle,
+            src_offset * elem_size,
+            self.handle,
+            dst_offset * elem_size,
+            len * elem_size,
+        );
+    }
+    pub fn upload_range(&self, device: &dyn GpuDevice, offset: usize, data: &[T])
+    where
+        T: NoUninit,
+    {
         debug_assert!(offset + data.len() <= self.capacity);
 
         let byte_offset = offset * size_of::<T>();
@@ -176,15 +194,8 @@ impl<T> GpuBuffer<T> {
             byte_size,
         );
     }
-}
 
-impl<T> GpuBuffer<T> {
-    pub fn grow(
-        &mut self,
-        device: &dyn GpuDevice,
-        new_capacity: usize,
-        copy_existing: bool,
-    ) {
+    pub fn grow(&mut self, device: &dyn GpuDevice, new_capacity: usize, copy_existing: bool) {
         assert!(new_capacity > self.capacity);
 
         let new_size = new_capacity * size_of::<T>();
@@ -192,11 +203,7 @@ impl<T> GpuBuffer<T> {
 
         if copy_existing {
             let copy_bytes = self.capacity * size_of::<T>();
-            device.copy_buffer(
-                self.handle,
-                new_handle,
-                copy_bytes,
-            );
+            device.copy_buffer(self.handle, 0, new_handle, 0, copy_bytes);
         }
 
         device.destroy_buffer(self.handle);
@@ -206,13 +213,15 @@ impl<T> GpuBuffer<T> {
     }
 }
 
-#[derive(Default,Clone,Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct Range<T> {
     start: T,
     end: T,
 }
-impl<T> Range<T> 
-    where T: Clone {
+impl<T> Range<T>
+where
+    T: Clone,
+{
     pub fn new(start: T, end: T) -> Self {
         Self { start, end }
     }
@@ -220,13 +229,14 @@ impl<T> Range<T>
         self.start = start;
         self.end = end;
     }
+
     pub fn set_start(&mut self, start: T) {
         self.start = start;
     }
     pub fn set_end(&mut self, end: T) {
         self.end = end;
     }
-    pub fn get_range(&self) -> (T,T) {
+    pub fn get_range(&self) -> (T, T) {
         (self.start.clone(), self.end.clone())
     }
     pub fn start(&self) -> T {

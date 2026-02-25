@@ -1,6 +1,6 @@
 use bevy_math::*;
 use smallvec::SmallVec;
-use sns_core::prelude::LinearAllocator;
+use sns_core::prelude::{LinearAllocator, Range};
 
 use super::{
     BRICK_SIZE, BRICKMAP_SIZE, BRICKS_PER_BRICKMAP, BrickID, MaterialID, VOXELS_PER_BRICK, brick,
@@ -85,6 +85,17 @@ pub struct BrickMap {
 }
 
 impl BrickMap {
+    pub fn get_brick(&self, range: Range<usize>)-> &[brick::Brick]{
+        self.storage.bricks.slice_range(range.start(), range.end())
+    }
+    pub fn get_material(&self, range: Range<usize>)-> &[u16] {
+        self.storage.materials.slice_bucket(range.start(), range.end())
+    }
+    pub fn get_indices(&self, range: Range<usize>)-> &[u32] {
+        self.grid.index.slice_range(range.start(), range.end())
+    }
+
+
     pub fn insert(&mut self, voxel: BrickID, material: MaterialID) -> SmallVec<[BrickEditEvent; 4]> {
         let mut events = SmallVec::new();
         let flipped_voxel = self.flip_y(voxel);

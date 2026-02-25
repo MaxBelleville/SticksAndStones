@@ -5,9 +5,12 @@ mod device;
 mod index;
 mod map;
 mod material;
-use bevy_math::*;
+mod scheduler;
 
 use std::collections::HashMap;
+
+use bevy_math::*;
+use sns_core::prelude::{GpuDevice, Range};
 
 /*
     What is a brick hub?
@@ -39,7 +42,7 @@ pub type BrickIndex = u32;
 #[derive(Default)]
 pub struct BrickHubCell {
     map: map::BrickMap,
-    cell_state: device::CellDeltaGroup,
+    delta: allocators::CellDelta,
 }
 impl BrickHubCell {
     pub fn insert(&mut self, voxel: BrickID, material: MaterialID) {
@@ -58,45 +61,178 @@ impl BrickHubCell {
     fn apply_event(&mut self, event: map::BrickEditEvent) {
         match event {
             map::BrickEditEvent::BrickAllocated { brick_index } => {
-                self.cell_state
-                    .register::<device::IndicesStream>(brick_index);
-                self.cell_state.register::<device::BrickStream>(brick_index);
+                self.delta
+                    .register(device::StorageType::Indices, brick_index);
+                self.delta.register(device::StorageType::Brick, brick_index);
             }
 
             map::BrickEditEvent::MaterialBlockAllocated { base } => {
-                self.cell_state.register_range::<device::MaterialStream>(
+                self.delta.register_range(
+                    device::StorageType::Material,
                     base as usize,
                     base as usize + VOXELS_PER_BRICK,
                 );
             }
 
             map::BrickEditEvent::VoxelMaterialChanged { index } => {
-                self.cell_state.register::<device::MaterialStream>(index);
+                self.delta.register(device::StorageType::Material, index);
             }
 
             map::BrickEditEvent::BrickBecameEmpty { brick_index } => {
-                self.cell_state.register::<device::BrickStream>(brick_index);
-                self.cell_state
-                    .register::<device::IndicesStream>(brick_index);
+                self.delta.register(device::StorageType::Brick, brick_index);
+                self.delta
+                    .register(device::StorageType::Indices, brick_index);
             }
         }
+    }
+    pub fn clear_delta(&mut self) {
+        self.delta.clear();
+    }
+
+    pub fn get_delta_mut(&mut self) -> &mut allocators::CellDelta {
+        &mut self.delta
+    }
+    pub fn get_brickmap(&self) -> &map::BrickMap {
+        &self.map
     }
 }
 
 #[derive(Default)]
 pub struct BrickHub {
     cells: HashMap<IVec3, BrickHubCell>,
-    device: device::DeviceBuffers,
+    buffers: device::Buffers,
     allocator: allocators::DeviceAllocator,
+    scheduler: scheduler::DeviceScheduler,
+    residency: clipmap::ResidencyManager,
 }
 
 impl BrickHub {
     pub fn new() -> Self {
         Self {
             cells: HashMap::new(),
-            device: device::DeviceBuffers::default(),
+            buffers: device::Buffers::default(),
             allocator: allocators::DeviceAllocator::default(),
+            scheduler: scheduler::DeviceScheduler::default(),
+            residency: clipmap::ResidencyManager::default(),
         }
+    }
+
+    pub fn get_or_admit_cell(
+        &mut self,
+        id: CellID,
+        view_cell: CellID,
+        frame: u64,
+    ) -> Option<&mut BrickHubCell> {
+        let ring = clipmap::classify_ring(id, view_cell)?;
+
+        if !self.cells.contains_key(&id) {
+            match self.residency.admit(id, ring, frame) {
+                clipmap::ResidencyDecision::Admit => {
+                    self.cells.insert(id, BrickHubCell::default());
+                    self.allocator.admit_cell(id, ring);
+                }
+
+                clipmap::ResidencyDecision::EvictAndAdmit(evict_id) => {
+                    self.unload_cell(evict_id);
+                    self.cells.insert(id, BrickHubCell::default());
+                    self.allocator.admit_cell(id, ring);
+                }
+
+                clipmap::ResidencyDecision::Reject => {
+                    return None;
+                }
+            }
+        } else {
+            self.residency.touch(id, ring, frame);
+        }
+
+        self.cells.get_mut(&id)
+    }
+
+    /// Unload a cell and free its GPU ranges.
+    pub fn unload_cell(&mut self, id: CellID) {
+        let alloc = self
+            .allocator
+            .remove(id)
+            .expect("allocator and cell map out of sync");
+
+        let ring = alloc.get_ring();
+
+        self.allocator.free_cell_allocation(alloc);
+
+        self.residency.remove(id, ring);
+
+        self.cells
+            .remove(&id)
+            .expect("allocator and cell map out of sync");
+    }
+
+    
+    pub fn flush(&mut self, gpu: &dyn GpuDevice) {
+        // ---- Phase 1: Collect CPU deltas
+        let batch = self.collect_device_batch();
+
+        // ---- Phase 2: Compaction
+        if let Some(candidates) = self.reserve_compaction_if_needed() {
+            self.schedule_gpu_migrations(&candidates);
+
+            self.scheduler.resolve_migrations(&self.cells);
+
+            self.scheduler.execute_uploads(gpu, &mut self.buffers);
+
+            self.allocator.finalize_compaction(&candidates);
+        }
+
+        // ---- Phase 3: Upload regular deltas
+        self.scheduler
+            .flush_deltas(batch, &self.cells, &self.allocator, &mut self.buffers, gpu);
+    }
+
+
+    fn collect_device_batch(&mut self) -> device::DeltaBatch {
+        let mut batch = device::DeltaBatch::default();
+
+        for  (&id,cell) in self.cells.iter_mut() {
+            batch.take_and_push(id, cell.get_delta_mut());
+        }
+
+        batch
+    }
+
+    fn schedule_gpu_migrations(&mut self, candidates: &[allocators::CompactionCandidate]) {
+        for cand in candidates {
+            if let Some(new_alloc) = cand.get_new_alloc() {
+                let id = cand.get_id();
+
+                self.scheduler.enqueue(scheduler::GpuMigrationTask {
+                    id,
+                    old_alloc: cand.get_old_alloc().clone(),
+                    new_alloc: new_alloc.clone(),
+                });
+            }
+        }
+    }
+
+    fn reserve_compaction_if_needed(&mut self) -> Option<Vec<allocators::CompactionCandidate>> {
+        // Choose a ring to compact (policy decision)
+        let ring = 0; // example policy
+
+        if !self.allocator.is_fragmented_for(BRICKS_PER_BRICKMAP) {
+            return None;
+        }
+
+        let candidates = self.allocator.select_compaction_candidates(ring);
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let mut candidates = candidates;
+
+        // Reserve new ranges
+        self.allocator.allocate_new_ranges(&mut candidates);
+
+        Some(candidates)
     }
 }
 

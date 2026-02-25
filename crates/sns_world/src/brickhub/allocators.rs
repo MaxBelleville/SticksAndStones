@@ -1,52 +1,100 @@
-
 use bevy_math::*;
+use smallvec::SmallVec;
 use sns_core::prelude::Range;
 
-
-
-use super::{BRICKS_PER_BRICKMAP,VOXELS_PER_BRICK,CellID,device};
+use super::{BRICKS_PER_BRICKMAP, CellID, VOXELS_PER_BRICK, clipmap, device};
+use core::alloc;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy,Default)]
-pub struct QueuedRange{
-   cell_id: CellID,
-   range: Range<usize>,
-   stream_type: char,
-}
 #[derive(Default)]
-pub struct DeviceQueue {
-    ranges: Vec<QueuedRange>,
+pub struct CellDeltaRange {
+    range: Range<usize>,
+    state: device::DeltaState,
 }
-impl DeviceQueue {
-    pub fn aggregate_cell(&mut self, group: &device::CellDeltaGroup) {
-        self.aggregate_stream::<device::BrickStream>(group);
-        self.aggregate_stream::<device::MaterialStream>(group);
-        self.aggregate_stream::<device::IndicesStream>(group);
+
+impl CellDeltaRange {
+    pub fn register(&mut self, index: usize) {
+        self.state = device::DeltaState::Active;
+        self.range.set_start(self.range.start().min(index));
+        self.range.set_end(self.range.end().max(index + 1));
     }
 
-    pub fn aggregate_stream<S: device::CellStream>(&mut self, group: &device::CellDeltaGroup) {
-        let cell_id = group.get_cell_id();
-        if let Some((from, to)) = group.get_active_range::<S>() {
-            self.ranges.push(QueuedRange {
-                cell_id,
-                stream_type: S::STREAM_TYPE,
-                range: Range::new(from,to)
-            });
+    pub fn register_range(&mut self, from: usize, to: usize) {
+        self.state = device::DeltaState::Active;
+        self.range.set_start(self.range.start().min(from));
+        self.range.set_end(self.range.end().max(to));
+    }
+
+    pub fn take(&mut self) -> Option<(usize, usize)> {
+        if self.state == device::DeltaState::Active {
+            let r = (self.range.start(), self.range.end());
+            *self = Self::default();
+            Some(r)
+        } else {
+            //TODO: Potentially do something if invalid?
+            None
+        }
+    }
+    pub fn is_active(&self) -> bool {
+        self.state == device::DeltaState::Active
+    }
+    pub fn is_state(&self, state: device::DeltaState) -> bool {
+        self.state == state
+    }
+}
+
+pub struct CellDelta {
+    pub dirty_brick: CellDeltaRange,
+    pub dirty_material: CellDeltaRange,
+    pub dirty_indices: CellDeltaRange,
+}
+impl Default for CellDelta {
+    fn default() -> Self {
+        Self {
+            dirty_brick: CellDeltaRange::default(),
+            dirty_material: CellDeltaRange::default(),
+            dirty_indices: CellDeltaRange::default(),
+        }
+    }
+}
+
+impl CellDelta {
+    pub fn register(&mut self, storage_type: device::StorageType, index: usize) {
+        match storage_type {
+            device::StorageType::Brick => self.dirty_brick.register(index),
+            device::StorageType::Material => self.dirty_material.register(index),
+            device::StorageType::Indices => self.dirty_indices.register(index),
+        }
+    }
+    pub fn register_range(&mut self, storage_type: device::StorageType, to: usize, from: usize) {
+        match storage_type {
+            device::StorageType::Brick => self.dirty_brick.register_range(to, from),
+            device::StorageType::Material => self.dirty_material.register_range(to, from),
+            device::StorageType::Indices => self.dirty_indices.register_range(to, from),
         }
     }
 
-    pub fn range_from_stream<S: device::CellStream>(&self) -> Vec<&QueuedRange> {
-       self.ranges.iter().filter(|r| r.stream_type == S::STREAM_TYPE).collect()
+    pub fn take(&mut self, storage_type: device::StorageType) -> Option<(usize, usize)> {
+        match storage_type {
+            device::StorageType::Brick => self.dirty_brick.take(),
+            device::StorageType::Material => self.dirty_material.take(),
+            device::StorageType::Indices => self.dirty_indices.take(),
+        }
+    }
+    pub fn is_active(&self, storage_type: device::StorageType) -> bool {
+        match storage_type {
+            device::StorageType::Brick => self.dirty_brick.is_active(),
+            device::StorageType::Material => self.dirty_material.is_active(),
+            device::StorageType::Indices => self.dirty_indices.is_active(),
+        }
     }
 
     pub fn clear(&mut self) {
-        self.ranges.clear();
-    }
-    pub fn commit_cell(group: &mut device::CellDeltaGroup) {
-        group.reset();
+        self.dirty_brick = CellDeltaRange::default();
+        self.dirty_material = CellDeltaRange::default();
+        self.dirty_indices = CellDeltaRange::default();
     }
 }
-
 
 #[derive(Clone, Copy)]
 pub struct CellAllocation {
@@ -58,7 +106,7 @@ pub struct CellAllocation {
 
     index_base: usize,
     index_count: usize,
-    ring: u8, // future
+    ring: u8,
 }
 impl CellAllocation {
     pub fn get_brick_base(&self) -> usize {
@@ -90,11 +138,7 @@ pub struct RangeAllocator {
 
 impl RangeAllocator {
     pub fn alloc(&mut self, count: usize) -> usize {
-        if let Some((idx, range)) = self.free
-            .iter()
-            .enumerate()
-            .find(|(_, r)| r.count >= count)
-        {
+        if let Some((idx, range)) = self.free.iter().enumerate().find(|(_, r)| r.count >= count) {
             let base = range.base;
 
             if range.count == count {
@@ -136,16 +180,28 @@ impl RangeAllocator {
     pub fn capacity(&self) -> usize {
         self.next
     }
+
+    pub fn total_free(&self) -> usize {
+        self.free.iter().map(|r| r.count).sum()
+    }
+
+    pub fn largest_free_block(&self) -> usize {
+        self.free.iter().map(|r| r.count).max().unwrap_or(0)
+    }
+
+    pub fn is_fragmented_for(&self, size: usize) -> bool {
+        self.total_free() >= size && self.largest_free_block() < size
+    }
 }
 
 pub struct CompactionCandidate {
-    coord: IVec3, // cell coord
+    id: CellID, // cell id
     old_alloc: CellAllocation,
     new_alloc: Option<CellAllocation>, // will be filled in during compaction
 }
 impl CompactionCandidate {
-    pub fn get_coord(&self) -> IVec3 {
-        self.coord
+    pub fn get_id(&self) -> IVec3 {
+        self.id
     }
     pub fn get_old_alloc(&self) -> &CellAllocation {
         &self.old_alloc
@@ -153,9 +209,9 @@ impl CompactionCandidate {
     pub fn get_new_alloc(&self) -> Option<&CellAllocation> {
         self.new_alloc.as_ref()
     }
-    pub fn from_alloc(alloc: &CellAllocation, coord: IVec3) -> Self {
+    pub fn from_alloc(alloc: &CellAllocation, id: IVec3) -> Self {
         Self {
-            coord,
+            id,
             old_alloc: alloc.clone(),
             new_alloc: None,
         }
@@ -167,17 +223,11 @@ pub struct DeviceAllocator {
     bricks: RangeAllocator,
     materials: RangeAllocator,
     indices: RangeAllocator,
-
-    allocations: HashMap<IVec3, CellAllocation>,
+    allocations: HashMap<CellID, CellAllocation>,
 }
 
-
 impl DeviceAllocator {
-     pub fn admit_cell(
-        &mut self,
-        coord: IVec3,
-        ring: u8,
-    ) -> &CellAllocation {
+    pub fn admit_cell(&mut self, coord: IVec3, ring: u8) -> &CellAllocation {
         self.allocations.entry(coord).or_insert_with(|| {
             let brick_count = BRICKS_PER_BRICKMAP;
             let material_count = BRICKS_PER_BRICKMAP * VOXELS_PER_BRICK;
@@ -187,7 +237,6 @@ impl DeviceAllocator {
             let brick_base = self.bricks.alloc(brick_count);
             let material_base = self.materials.alloc(material_count);
             let index_base = self.indices.alloc(index_count);
-
             CellAllocation {
                 brick_base,
                 brick_count,
@@ -200,10 +249,7 @@ impl DeviceAllocator {
         })
     }
 
-    pub fn allocate_new_ranges(
-        &mut self,
-        candidates: &mut [CompactionCandidate],
-    ) {
+    pub fn allocate_new_ranges(&mut self, candidates: &mut [CompactionCandidate]) {
         for candidate in candidates.iter_mut() {
             let old = &candidate.old_alloc;
             let brick_base = self.bricks.alloc(old.brick_count);
@@ -230,49 +276,53 @@ impl DeviceAllocator {
                 self.materials.free(old.material_base, old.material_count);
                 self.indices.free(old.index_base, old.index_count);
 
-                self.allocations.insert(cand.coord, new_alloc.clone());
+                self.allocations.insert(cand.id, new_alloc.clone());
             }
         }
     }
-    pub fn is_fragmented(&self, ring: u8) -> bool {
+    pub fn is_fragmented_for(&self, size: usize) -> bool {
         // Fragmented if we have free ranges but ring is still full
-        self.bricks.has_free_space()
-            || self.materials.has_free_space()
-            || self.indices.has_free_space()
+        self.bricks.is_fragmented_for(size)
+            || self.materials.is_fragmented_for(size)
+            || self.indices.is_fragmented_for(size)
     }
 
-    pub fn select_compaction_candidates(&self, ring: u8,coord: IVec3) -> Vec<CompactionCandidate> {
+    pub fn select_compaction_candidates(&self, ring: u8) -> Vec<CompactionCandidate> {
         self.allocations
-            .values()
-            .filter(|a| a.get_ring() == ring)
-            .map(|alloc| CompactionCandidate::from_alloc(alloc,coord))
+            .iter()
+            .filter(|(_, a)| a.get_ring() == ring)
+            .map(|(id, alloc)| CompactionCandidate::from_alloc(alloc, id.clone()))
             .take(2) // start small
             .collect()
     }
 
     /// Remove a cell allocation and return it
-    pub fn remove(&mut self, coord: &IVec3) -> Option<CellAllocation> {
-        self.allocations.remove(coord)
+    pub fn remove(&mut self, id: CellID) -> Option<CellAllocation> {
+        if let Some(alloc) = self.allocations.remove(&id) {
+            return Some(alloc);
+        }
+        None
     }
 
     /// Free ranges for a removed cell back to RangeAllocator
     pub fn free_cell_allocation(&mut self, alloc: CellAllocation) {
         self.bricks.free(alloc.brick_base, alloc.brick_count);
-        self.materials.free(alloc.material_base, alloc.material_count);
+        self.materials
+            .free(alloc.material_base, alloc.material_count);
         self.indices.free(alloc.index_base, alloc.index_count);
     }
 
     /// Lookup a cell allocation
-    pub fn get(&self, coord: IVec3) -> Option<&CellAllocation> {
-        self.allocations.get(&coord)
+    pub fn get(&self, id: CellID) -> Option<&CellAllocation> {
+        self.allocations.get(&id)
     }
 
     pub fn values(&self) -> impl Iterator<Item = &CellAllocation> {
         self.allocations.values()
     }
 
-    pub fn contains_key(&self, coord: &IVec3) -> bool {
-        self.allocations.contains_key(coord)
+    pub fn contains_key(&self, id: CellID) -> bool {
+        self.allocations.contains_key(&id)
     }
 
     pub fn brick_capacity(&self) -> usize {
@@ -286,5 +336,4 @@ impl DeviceAllocator {
     pub fn index_capacity(&self) -> usize {
         self.indices.capacity()
     }
-
 }
