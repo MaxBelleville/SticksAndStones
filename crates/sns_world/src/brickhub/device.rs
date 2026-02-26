@@ -76,10 +76,10 @@ impl DeltaBatch {
             self.register_range(id, StorageType::Brick, from, to);
         }
         if let Some((from, to)) = delta.take(StorageType::Indices) {
-            self.register_range(id, StorageType::Brick, from, to);
+            self.register_range(id, StorageType::Indices, from, to);
         }
         if let Some((from, to)) = delta.take(StorageType::Material) {
-            self.register_range(id, StorageType::Brick, from, to);
+            self.register_range(id, StorageType::Material, from, to);
         }
     }
     pub fn register_range(
@@ -113,8 +113,8 @@ impl DeltaBatch {
     pub fn get_ranges(&self, storage_type: StorageType) -> &Vec<CellRange> {
         match storage_type {
             StorageType::Brick => &self.brick_ranges,
-            StorageType::Material => &self.index_ranges,
-            StorageType::Indices => &self.material_ranges,
+            StorageType::Material => &self.material_ranges,
+            StorageType::Indices => &self.index_ranges,
         }
     }
 }

@@ -1,151 +1,114 @@
 use bevy_math::*;
 
 use crate::{
-    SUBBIOME_OFFSET_SCALE,
-    prelude::{BaseRules, PartialClimateField},
+    SUBBIOME_OFFSET_SCALE, WEIGHT_EPSILON,
+    prelude::PartialClimateField,
+    structs::{BaseRuleId, BiomeId, SubBiomeId, TerrainProfileId},
 };
 
 use sns_core::prelude::*;
-use std::collections::HashMap;
-
-pub struct BiomePlate {
-    biomes: HashMap<String, Biome>,
-    sub_biomes: HashMap<String, SubBiome>,
-    weight_epsilon: f32,
-}
-impl Default for BiomePlate {
-    fn default() -> Self {
-        Self {
-            biomes: HashMap::new(),
-            sub_biomes: HashMap::new(),
-            weight_epsilon: 0.01,
-        }
-    }
+use std::{cmp::Ordering, collections::HashMap};
+#[derive(Default)]
+pub struct Plate {
+    biomes: HashMap<BiomeId, Biome>,
+    sub_biomes: HashMap<SubBiomeId, SubBiome>,
 }
 
-impl BiomePlate {
-    pub fn _get_biome(&self, id: String) -> Option<&Biome> {
+
+impl Plate {
+    pub fn _get_biome(&self, id: BiomeId) -> Option<&Biome> {
         self.biomes.get(&id)
     }
-    pub fn _get_sub_biome(&self, id: String) -> Option<&SubBiome> {
-        self.sub_biomes.get(&id)
-    }
 
-    pub fn evaluate_biomes(
+    pub fn sample(
         &self,
+        climate: PartialClimateField,
         coord: Vec2,
         seed: i32,
-        climate_field: PartialClimateField,
-        base_rules: &BaseRules,
         local_noise: &NoiseField,
-    ) -> Vec<ActiveBiome> {
-        // 1. Compute biome weights
-        let (mut active_biomes, sum) = self.compute_weights(climate_field);
-        if sum == 0.0 {
-            return Vec::new();
-        }
-
-        // 2. For each biome with weight > ε
-        for active_biome in &mut active_biomes {
-            active_biome.weight /= sum;
-
-            let cloned_rule_ids = active_biome.base_rule_ids.clone();
-            active_biome.base_rule_ids.clear();
-            //Evaluate biome rules
-            for rule_id in &cloned_rule_ids {
-                if let Some(rule) = base_rules.get_rule(rule_id.clone()) {
-                    if active_biome.weight >= rule.get_min_weight() {
-                        active_biome.base_rule_ids.push(rule.get_rule_id());
-                    }
-                }
-            }
-
-            // 3. Evaluate sub-biomes
-            for sub in self.sub_biomes.values() {
-                if sub.get_parent_id() != active_biome.get_biome_id() {
-                    continue;
-                }
-                let active_sub_wrapped = sub.evaluate(
-                    coord,
-                    seed,
-                    active_biome.get_weight(),
-                    base_rules,
-                    local_noise,
-                );
-
-                if let Some(active_sub) = active_sub_wrapped {
-                    active_biome.sub_biomes.push(active_sub);
-                }
-            }
-        }
-        active_biomes
-    }
-
-    pub fn compute_weights(&self, climate_field: PartialClimateField) -> (Vec<ActiveBiome>, f32) {
+    ) -> Vec<Sample> {
         let mut out = Vec::new();
         let mut sum = 0.0;
 
-        for (id, biome) in &self.biomes {
-            let w = climate_field.gaussian(biome.center, biome.width);
-            if w >= self.weight_epsilon {
-                sum += w;
-                out.push(ActiveBiome {
-                    biome_id: id.clone(),
-                    weight: w,
-                    sub_biomes: Vec::new(),
-                    terrain_profile_id: biome.terrain_profile_id.clone(),
-                    base_rule_ids: biome.base_rule_ids.clone(),
-                });
+        for biome in self.biomes.values() {
+            let weight = climate.gaussian(biome.center, biome.width);
+
+            if weight <= WEIGHT_EPSILON {
+                continue;
             }
+            sum += weight;
+
+            let sample = Sample {
+                id: biome.id,
+                weight,
+                sub_sample: Vec::new(),
+                terrain_profile_id: biome.terrain_profile_id,
+                base_rule_ids: biome.base_rule_ids.clone(),
+            };
+            out.push(sample);
         }
-        (out, sum)
+        //Normalize values and get sub biomes
+        for sample in &mut out {
+            sample.weight /= sum;
+            let biome = self.biomes.get(&sample.id).unwrap();
+            for sub_ids in &biome.sub_ids {
+                let sub = self.sub_biomes.get(sub_ids).unwrap();
+                if let Some(evaluated_sub) = sub.sample(coord, seed, sample.weight, local_noise) {
+                    sample.sub_sample.push(evaluated_sub);
+                }
+            }
+        }   
+
+        out
     }
 }
 
 //Details what kinda terrain emergies under the climate conditions(will likely be a blend between mutiple biomes).
 #[derive(Default)]
 pub struct Biome {
+    id: BiomeId,
     // Climate preference
     center: PartialClimateField,
     width: PartialClimateField,
+    sub_ids: Vec<SubBiomeId>,
 
     // What terrain this biome produces
-    terrain_profile_id: String,
-    base_rule_ids: Vec<String>,
+    terrain_profile_id: TerrainProfileId,
+    base_rule_ids: Vec<BaseRuleId>,
 }
+
 //Add localized character to each biome so there's variation based on noise + parent weights
 #[derive(Default)]
 pub struct SubBiome {
-    parent_id: String,
-    subbiome_id: String,
-    threshold: f32, // activation threshold
+    parent_id: BiomeId,
+    id: SubBiomeId,
+    threshold: f32,
     weight: f32,
-    terrain_profile_id: Option<String>,
-    base_rule_ids: Vec<String>,
+    terrain_profile_id: Option<TerrainProfileId>,
+    base_rule_ids: Vec<BaseRuleId>,
 }
 
 impl SubBiome {
-    pub fn get_parent_id(&self) -> String {
-        self.parent_id.clone()
+    pub fn get_parent_id(&self) -> BiomeId {
+        self.parent_id
     }
 
-    pub fn _get_opt_terrain_profile_id(&self) -> &Option<String> {
+    pub fn _get_opt_terrain_profile_id(&self) -> &Option<TerrainProfileId> {
         &self.terrain_profile_id
     }
 
-    pub fn _get_base_rule_ids(&self) -> &Vec<String> {
+    pub fn _get_base_rule_ids(&self) -> &Vec<BaseRuleId> {
         &self.base_rule_ids
     }
 
-    pub fn evaluate(
+    pub fn sample(
         &self,
         coord: Vec2,
         seed: i32,
         parent_weight: f32,
-        base_rules: &BaseRules,
         local_noise: &NoiseField,
-    ) -> Option<ActiveSubBiome> {
-        let hash = hash_str_vec2(self.subbiome_id.as_str(), seed);
+    ) -> Option<SubSample> {
+        let hash = hash_id_vec2(self.id.val, seed);
 
         // Centered, small, frequency-aware offset
         let offset = (hash - Vec2::splat(0.5)) * SUBBIOME_OFFSET_SCALE;
@@ -156,140 +119,148 @@ impl SubBiome {
             return None;
         }
 
-        let mut base_rule_ids = Vec::new();
         let weight = parent_weight * self.weight * mask;
 
-        for rule_id in &self.base_rule_ids {
-            if let Some(rule) = base_rules.get_rule(rule_id.clone()) {
-                if weight >= rule.get_min_weight() {
-                    base_rule_ids.push(rule.get_rule_id());
-                }
-            }
-        }
-
-        Some(ActiveSubBiome {
-            biome_id: self.parent_id.clone(),
+        Some(SubSample {
+            parent_id: self.parent_id,
+            id: self.id,
             weight,
-            terrain_profile_id: self.terrain_profile_id.clone(),
-            base_rule_ids,
+            terrain_profile_id: self.terrain_profile_id,
+            base_rule_ids: self.base_rule_ids.clone(),
         })
     }
 }
 
 #[derive(Default, Clone)]
-pub struct ActiveBiome {
-    biome_id: String,
+pub struct Sample {
+    id: BiomeId,
     weight: f32,
-    terrain_profile_id: String,
-    base_rule_ids: Vec<String>,
-    sub_biomes: Vec<ActiveSubBiome>,
+    terrain_profile_id: TerrainProfileId,
+    base_rule_ids: Vec<BaseRuleId>,
+    sub_sample: Vec<SubSample>,
 }
 
-impl ActiveBiome {
-    pub fn get_biome_id(&self) -> String {
-        self.biome_id.clone()
+impl Sample {
+    pub fn get_id(&self) -> BiomeId {
+        self.id
     }
-    pub fn get_terrain_profile_id(&self) -> String {
-        self.terrain_profile_id.clone()
+    pub fn get_terrain_profile_id(&self) -> TerrainProfileId {
+        self.terrain_profile_id
     }
-    pub fn get_base_rule_ids(&self) -> &Vec<String> {
+    pub fn get_base_rule_ids(&self) -> &Vec<BaseRuleId> {
         &self.base_rule_ids
+    }
+    pub fn get_mut_rule_ids(&mut self) -> &mut Vec<BaseRuleId> {
+        &mut self.base_rule_ids
     }
 
     pub fn get_weight(&self) -> f32 {
         self.weight
     }
-    pub fn get_sub_biomes(&self) -> &Vec<ActiveSubBiome> {
-        &self.sub_biomes
+    pub fn get_sub_sample(&self) -> &Vec<SubSample> {
+        &self.sub_sample
     }
+     pub fn get_mut_sub_sample(&mut self) -> &mut Vec<SubSample> {
+        &mut self.sub_sample
+    }
+
     pub fn set_weight(&mut self, weight: f32) {
         self.weight = weight;
     }
     pub fn lerp(&self, other: &Self, t: f32) -> Self {
-        let mut subs: HashMap<String, (&ActiveSubBiome, Option<&ActiveSubBiome>)> = HashMap::new();
-
-        for s in &self.sub_biomes {
-            subs.insert(s.biome_id.clone(), (s, None));
-        }
-
-        for s in &other.sub_biomes {
-            subs.entry(s.biome_id.clone())
-                .and_modify(|v| v.1 = Some(s))
-                .or_insert((s, None));
-        }
-
-        let sub_biomes = subs
-            .into_iter()
-            .filter_map(|(_, (a, b_opt))| {
-                let (weight, source) = match b_opt {
-                    Some(b) => (lerp(a.weight, b.weight, t), a),
-                    None => (a.weight * (1.0 - t), a),
-                };
-
-                (weight > 0.001).then_some(ActiveSubBiome {
-                    biome_id: source.biome_id.clone(),
-                    weight,
-                    base_rule_ids: source.base_rule_ids.clone(),
-                    terrain_profile_id: source.terrain_profile_id.clone(),
-                })
-            })
-            .collect();
-
+        let sub_sample = SubSample::lerp(&self.sub_sample, &other.sub_sample, t);
         Self {
-            biome_id: self.biome_id.clone(),
-            terrain_profile_id: self.terrain_profile_id.clone(),
+            id: self.id,
+            terrain_profile_id: self.terrain_profile_id,
             weight: lerp(self.weight, other.weight, t),
-            sub_biomes,
+            sub_sample,
             base_rule_ids: self.base_rule_ids.clone(),
-        }
-    }
-
-    pub fn recompute_rules(&mut self, base_rules: &BaseRules) {
-        let cloned_rules = self.base_rule_ids.clone();
-
-        self.base_rule_ids.clear();
-        for rule_id in cloned_rules {
-            if let Some(rule) = base_rules.get_rule(rule_id.clone()) {
-                if self.weight >= rule.get_min_weight() {
-                    self.base_rule_ids.push(rule.get_rule_id());
-                }
-            }
-        }
-
-        for sub in &mut self.sub_biomes {
-            let cloned_rules = self.base_rule_ids.clone();
-            sub.base_rule_ids.clear();
-            for rule_id in cloned_rules {
-                if let Some(rule) = base_rules.get_rule(rule_id.clone()) {
-                    if sub.weight >= rule.get_min_weight() {
-                        sub.base_rule_ids.push(rule.get_rule_id());
-                    }
-                }
-            }
         }
     }
 }
 
 #[derive(Default, Clone)]
-pub struct ActiveSubBiome {
-    biome_id: String,
+pub struct SubSample {
+    id: SubBiomeId,
+    parent_id: BiomeId,
     weight: f32,
-    terrain_profile_id: Option<String>,
-    base_rule_ids: Vec<String>,
+    terrain_profile_id: Option<TerrainProfileId>,
+    base_rule_ids: Vec<BaseRuleId>,
 }
-impl ActiveSubBiome {
-    pub fn get_biome_id(&self) -> String {
-        self.biome_id.clone()
+impl SubSample {
+    pub fn get_id(&self) -> SubBiomeId {
+        self.id
+    }
+    pub fn get_parent_id(&self) -> BiomeId {
+        self.parent_id
     }
 
     pub fn get_weight(&self) -> f32 {
         self.weight
     }
 
-    pub fn get_base_rule_ids(&self) -> &Vec<String> {
+    pub fn get_base_rule_ids(&self) -> &Vec<BaseRuleId> {
         &self.base_rule_ids
     }
-    pub fn get_opt_terrain_profile_id(&self) -> &Option<String> {
+      pub fn get_mut_rule_ids(&mut self) -> &mut Vec<BaseRuleId> {
+        &mut self.base_rule_ids
+    }
+    pub fn get_opt_terrain_profile_id(&self) -> &Option<TerrainProfileId> {
         &self.terrain_profile_id
+    }
+
+    pub fn lerp(
+        a: &Vec<SubSample>,
+        b: &Vec<SubSample>,
+        t: f32,
+    ) -> Vec<SubSample> {
+        let mut out = Vec::new();
+
+        let mut i = 0;
+        let mut j = 0;
+
+        while i < a.len() && j < b.len() {
+            match a[i].id.val.cmp(&b[j].id.val) {
+                Ordering::Equal => {
+                    let weight = lerp(a[i].weight, b[j].weight, t);
+                    if weight > WEIGHT_EPSILON {
+                        out.push(SubSample {
+                            id: a[i].id,
+                            parent_id: a[i].parent_id,
+                            weight,
+                            terrain_profile_id: a[i].terrain_profile_id,
+                            base_rule_ids: a[i].base_rule_ids.clone(),
+                        });
+                    }
+                    i += 1;
+                    j += 1;
+                }
+                Ordering::Less => {
+                    let weight = a[i].weight * (1.0 - t);
+                    if weight > WEIGHT_EPSILON {
+                        out.push(a[i].scaled(weight));
+                    }
+                    i += 1;
+                }
+                Ordering::Greater => {
+                    let weight = b[j].weight * t;
+                    if weight > WEIGHT_EPSILON {
+                        out.push(b[j].scaled(weight));
+                    }
+                    j += 1;
+                }
+            }
+        }
+        out
+    }
+
+    pub fn scaled(&self, w: f32) -> SubSample {
+        SubSample {
+            id: self.id,
+            parent_id: self.parent_id,
+            weight: w,
+            terrain_profile_id: self.terrain_profile_id,
+            base_rule_ids: self.base_rule_ids.clone(),
+        }
     }
 }

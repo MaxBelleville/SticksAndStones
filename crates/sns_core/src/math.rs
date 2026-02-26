@@ -28,16 +28,24 @@ pub fn mod_floor_vec3(a: IVec3, b: i32) -> IVec3 {
 #[inline]
 pub fn hash_str(s: &str, seed: i32) -> u32 {
     let mut h = seed as u32;
-
     for &byte in s.as_bytes() {
-        // XOR the byte into the hash
         h ^= byte as u32;
-        // Multiply by a large constant to spread the bits (similar to your hash2)
-        // 0x9E3779B9 is often used because it's the golden ratio constant
         h = h.wrapping_mul(0x9E3779B9);
     }
 
-    // Final mix to ensure bits are well-distributed
+    h = h.wrapping_mul(0xC2B2AE35);
+    h
+}
+
+#[inline]
+pub fn hash_id(id: u32, seed: i32) -> u32 {
+    let mut h = seed as u32;
+
+    for &byte in id.to_be_bytes().iter() {
+        h ^= byte as u32;
+        h = h.wrapping_mul(0x9E3779B9);
+    }
+
     h = h.wrapping_mul(0xC2B2AE35);
     h
 }
@@ -45,6 +53,15 @@ pub fn hash_str(s: &str, seed: i32) -> u32 {
 #[inline]
 pub fn hash_str_vec2(s: &str, seed: i32) -> Vec2 {
     let h = hash_str(s, seed);
+    Vec2::new(
+        (h & 0xFFFF) as f32 / 65535.0,
+        ((h >> 16) & 0xFFFF) as f32 / 65535.0,
+    )
+}
+
+#[inline]
+pub fn hash_id_vec2(id: u32, seed: i32) -> Vec2 {
+    let h = hash_id(id, seed);
     Vec2::new(
         (h & 0xFFFF) as f32 / 65535.0,
         ((h >> 16) & 0xFFFF) as f32 / 65535.0,

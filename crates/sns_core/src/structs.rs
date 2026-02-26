@@ -2,16 +2,16 @@ use bevy_math::*;
 use bytemuck::NoUninit;
 use simdnoise::NoiseBuilder;
 use std::collections::HashMap;
-
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem::size_of;
 
 #[derive(Default)]
-pub struct NoiseFields {
-    noise_fields: HashMap<String, NoiseField>,
+pub struct NoiseFields<T: Eq + Hash> {
+    noise_fields: HashMap<T, NoiseField>,
 }
-impl NoiseFields {
-    pub fn get(&self, key: String) -> Option<&NoiseField> {
+impl<T: Eq + Hash> NoiseFields<T> {
+    pub fn get(&self, key: T) -> Option<&NoiseField> {
         self.noise_fields.get(&key)
     }
 }
@@ -245,4 +245,9 @@ where
     pub fn end(&self) -> T {
         self.end.clone()
     }
+}
+
+pub struct IdVolume<T> {
+    map: HashMap<String, T>,
+    reverse: Vec<String>,
 }

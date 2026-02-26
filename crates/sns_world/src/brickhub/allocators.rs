@@ -31,7 +31,6 @@ impl CellDeltaRange {
             *self = Self::default();
             Some(r)
         } else {
-            //TODO: Potentially do something if invalid?
             None
         }
     }
