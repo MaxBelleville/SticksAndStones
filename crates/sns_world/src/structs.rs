@@ -293,6 +293,9 @@ impl<T> GridSampleCache<T> {
     pub fn get_cell(&self, grid_coord: IVec2) -> &T {
         self.grid.get(&grid_coord).unwrap()
     }
+    pub fn get_mut_values(&mut self) -> Vec<&mut T> {
+        self.grid.values_mut().collect()
+    }
 
     pub fn update<S: GridSampler<T>>(&mut self, sampler: &mut S, world_pos: Vec2, seed: i32) {
         let center = self.pos_to_cell(world_pos);

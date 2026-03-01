@@ -251,6 +251,23 @@ impl SubSample {
                 }
             }
         }
+        // Remaining elements in a
+        while i < a.len() {
+            let weight = a[i].weight * (1.0 - t);
+            if weight > WEIGHT_EPSILON {
+                out.push(a[i].scaled(weight));
+            }
+            i += 1;
+        }
+
+        // Remaining elements in b
+        while j < b.len() {
+            let weight = b[j].weight * t;
+            if weight > WEIGHT_EPSILON {
+                out.push(b[j].scaled(weight));
+            }
+            j += 1;
+        }
         out
     }
 

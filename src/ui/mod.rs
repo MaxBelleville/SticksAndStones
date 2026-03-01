@@ -39,8 +39,11 @@ pub enum GameState {
     #[default]
     Normal,
     Inventory,
+    QuickMenu,
     Chat,
     Interaction,
+    PlayerList,
+    Map,
     Console,
     Quest,
     Paused,
@@ -92,6 +95,5 @@ fn setup(mut commands: Commands) {
             order: renderer::CameraOrder::Ui.into(), // Render second (on top)
             ..default()
         },
-
     ));
 }

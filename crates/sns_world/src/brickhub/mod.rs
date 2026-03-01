@@ -220,15 +220,11 @@ impl BrickHub {
         if !self.allocator.is_fragmented_for(BRICKS_PER_BRICKMAP) {
             return None;
         }
-
         let candidates = self.allocator.select_compaction_candidates(ring);
-
         if candidates.is_empty() {
             return None;
         }
-
         let mut candidates = candidates;
-
         // Reserve new ranges
         self.allocator.allocate_new_ranges(&mut candidates);
 

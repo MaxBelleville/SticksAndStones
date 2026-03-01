@@ -1,5 +1,5 @@
 use bevy_math::*;
-use std::{collections::{HashMap, VecDeque}, num::NonZeroUsize};
+use std::{collections::HashMap, num::NonZeroUsize};
 use lru::LruCache;
 use super::CellID;
 
@@ -16,7 +16,6 @@ pub const CLIPMAP_RINGS: &[ClipmapRing] = &[
     ClipmapRing { level: 1, radius_cells: 8,  max_cells: 17 * 17 * 17 },
     ClipmapRing { level: 2, radius_cells: 16, max_cells: 33 * 33 * 33 },
 ];
-pub const NUM_RINGS: usize = CLIPMAP_RINGS.len();
 
 
 pub fn classify_ring(cell: IVec3, view_cell: IVec3) -> Option<u8> {

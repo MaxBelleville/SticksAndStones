@@ -5,6 +5,7 @@ pub enum LoadState {
     #[default]
     Boot,   //App start
     ServerStarting,
+    ServerLoadDatabase,
     Connecting,
     WorldGen2D,
     SpawnAssignment,

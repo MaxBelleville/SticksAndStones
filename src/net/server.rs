@@ -79,7 +79,32 @@ impl LocalServer {
         self.stop();
         Self::start(is_single_player)
     }
-    pub fn build_dbs(&self) {
+
+    pub fn local_db_exists(&self)->bool {
+        let exe_path = std::env::current_exe().unwrap();
+        let exe_folder = exe_path.parent().unwrap();
+        let exe_folder_str = exe_folder.to_str().unwrap();
+        let cli_path = format!("{exe_folder_str}/spacetimedb-cli.exe");
+            let args = vec![
+            "--root-dir",
+            exe_folder_str,
+            "sql",
+            "--server",
+            "local",
+            "sticks-and-stones",
+            "SELECT * FROM user"
+            ];
+        let child: Child = Command::new(cli_path)
+            .args(args)
+            .stdout(Stdio::null()) 
+            .stderr(Stdio::null())// Keeps your console clean
+            .spawn().expect("Fail");
+        //Check stdout 
+        child.wait_with_output().unwrap().status.success()
+
+    }
+
+    pub fn build_local_db(&self)->bool {
         let exe_path = std::env::current_exe().unwrap();
         let exe_folder = exe_path.parent().unwrap();
         let exe_folder_str = exe_folder.to_str().unwrap();
@@ -96,13 +121,15 @@ impl LocalServer {
             "sticks-and-stones"
         ];
 
+
         let child: Child = Command::new(cli_path)
             .args(args)
             .stdout(Stdio::null()) // Keeps your console clean
             .spawn()
             .expect(
-                "Failed to find 'spacetimedb.wasm'. In the same folder as your exe",
+                "Failed to find 'spacetime.wasm'. In the same folder as your exe",
             );
-        info!("Database built!");
+
+        child.wait_with_output().unwrap().status.success()
     }
 }

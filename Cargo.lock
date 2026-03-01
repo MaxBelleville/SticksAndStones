@@ -4207,6 +4207,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "moonshine-behavior"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01924324b4d344b8784fb3fad4a3bd6c4c89bda77c74c6aa77ba78ef56e0880e"
+dependencies = [
+ "bevy_app",
+ "bevy_derive",
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_reflect",
+ "moonshine-kind",
+ "moonshine-util",
+]
+
+[[package]]
 name = "moonshine-core"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6158,6 +6173,7 @@ dependencies = [
  "bitflags 2.10.0",
  "iyes_progress",
  "leafwing-input-manager",
+ "moonshine-behavior",
  "moonshine-core",
  "sns_core",
  "sns_macros",

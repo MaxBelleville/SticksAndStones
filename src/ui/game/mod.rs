@@ -1,13 +1,9 @@
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_4, PI};
 
 use bevy::{
-    anti_alias::fxaa::Fxaa,
     app::PluginGroupBuilder,
     camera::visibility::RenderLayers,
-    core_pipeline::
-        prepass::{DeferredPrepass, DepthPrepass}
-    ,
-    input::mouse::AccumulatedMouseMotion,
+    color::palettes::tailwind,
     prelude::*,
 };
 
@@ -27,117 +23,111 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(ui::ManagerState::InGame), spawn_view_model)
-            .add_systems(Update, (move_player, change_mode));
+        app.add_systems(
+            OnEnter(ui::ManagerState::InGame),
+            (spawn_world, spawn_lights),
+        );
     }
 }
 
-#[derive(Debug, Component)]
-struct Player;
+fn spawn_lights(mut commands: Commands) {
+    // Main light
+    commands.spawn((
+        PointLight {
+            color: Color::from(tailwind::ORANGE_300),
+            shadows_enabled: true,
+            ..default()
+        },
+        RenderLayers::from(renderer::RenderLayer::DEFAULT | renderer::RenderLayer::VIEW_MODEL),
+        Transform::from_xyz(0.0, 3.0, 0.0),
+    ));
+    // Light behind wall
+    commands.spawn((
+        PointLight {
+            color: Color::WHITE,
 
-#[derive(Debug, Component, Deref, DerefMut)]
-struct CameraSensitivity(Vec2);
+            shadows_enabled: true,
 
-impl Default for CameraSensitivity {
-    fn default() -> Self {
-        Self(
-            // These factors are just arbitrary mouse sensitivity values.
-            // It's often nicer to have a faster horizontal sensitivity than vertical.
-            // We use a component for them so that we can make them user-configurable at runtime
-            // for accessibility reasons.
-            // It also allows you to inspect them in an editor if you `Reflect` the component.
-            Vec2::new(0.003, 0.002),
-        )
-    }
+            ..default()
+        },
+        RenderLayers::from(renderer::RenderLayer::DEFAULT | renderer::RenderLayer::VIEW_MODEL),
+        Transform::from_xyz(-3.5, 3.0, 0.0),
+    ));
+    // Light under floor
+    commands.spawn((
+        PointLight {
+            color: Color::from(tailwind::RED_300),
+
+            shadows_enabled: true,
+            ..default()
+        },
+        RenderLayers::from(renderer::RenderLayer::DEFAULT | renderer::RenderLayer::VIEW_MODEL),
+        Transform::from_xyz(0.0, -0.5, 0.0),
+    ));
 }
 
-#[derive(Debug, Component)]
-struct WorldModelCamera;
-//Todo move out of here to player plugin.
-fn spawn_view_model(mut commands: Commands) {
-    //Setup 3d camera
-    commands
-        .spawn((
-            Player,
-            CameraSensitivity::default(),
-            Transform::from_xyz(0.0, 1.0, 0.0),
-            Visibility::default(),
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                WorldModelCamera,
-                Camera3d::default(),
-                Projection::from(PerspectiveProjection {
-                    fov: 75.0_f32.to_radians(),
-                    ..default()
-                }),
-                Camera {
-                    order: renderer::CameraOrder::World.into(),
-                    clear_color: Color::srgb_u8(15, 9, 20).into(),
-                    ..default()
-                },
-                RenderLayers::from(
-                    renderer::RenderLayer::DEFAULT
-                        | renderer::RenderLayer::PARTICLES
-                        | renderer::RenderLayer::GIZMO3,
-                ),
-                (Msaa::Off, DeferredPrepass),
-            ));
-
-            // Spawn view model camera.
-            parent.spawn((
-                Camera3d::default(),
-                Camera {
-                    // Bump the order to render on top of the world model.
-                    order: renderer::CameraOrder::ViewModel.into(),
-                    ..default()
-                },
-                Projection::from(PerspectiveProjection {
-                    // We use whatever FOV we set in the animation software, e.g. Blender.
-                    // Tip: if you want to set a camera in Blender to the same defaults as Bevy,
-                    // see [this issue](https://github.com/kaosat-dev/Blenvy/issues/223)
-                    fov: 62.0_f32.to_radians(),
-                    ..default()
-                }),
-                // Only render objects belonging to the view model.
-                RenderLayers::from(renderer::RenderLayer::VIEW_MODEL),
-                (DepthPrepass, Msaa::Off, DeferredPrepass, Fxaa::default()),
-            ));
-        });
-}
-
-fn move_player(
-    accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
-    player: Single<(&mut Transform, &CameraSensitivity), With<Player>>,
+fn spawn_world(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    let (mut transform, camera_sensitivity) = player.into_inner();
+    let cube = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+    let floor = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(10.0)));
+    let sphere = meshes.add(Sphere::new(0.5));
+    let wall = meshes.add(Cuboid::new(0.2, 4.0, 3.0));
 
-    let delta = accumulated_mouse_motion.delta;
+    let blue_material = materials.add(StandardMaterial {
+        base_color: tailwind::BLUE_700.into(),
+        ..default()
+    });
+    let red_material = materials.add(StandardMaterial {
+        base_color: tailwind::RED_700.into(),
+        ..default()
+    });
+    let white_material = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        ..default()
+    });
 
-    if delta != Vec2::ZERO {
-        // Note that we are not multiplying by delta_time here.
-        // The reason is that for mouse movement, we already get the full movement that happened since the last frame.
-        // This means that if we multiply by delta_time, we will get a smaller rotation than intended by the user.
-        // This situation is reversed when reading e.g. analog input from a gamepad however, where the same rules
-        // as for keyboard input apply. Such an input should be multiplied by delta_time to get the intended rotation
-        // independent of the framerate.
-        let delta_yaw = -delta.x * camera_sensitivity.x;
-        let delta_pitch = -delta.y * camera_sensitivity.y;
-
-        let (yaw, pitch, roll) = transform.rotation.to_euler(EulerRot::YXZ);
-        let yaw = yaw + delta_yaw;
-
-        // If the pitch was ±¹⁄₂ π, the camera would look straight up or down.
-        // When the user wants to move the camera back to the horizon, which way should the camera face?
-        // The camera has no way of knowing what direction was "forward" before landing in that extreme position,
-        // so the direction picked will for all intents and purposes be arbitrary.
-        // Another issue is that for mathematical reasons, the yaw will effectively be flipped when the pitch is at the extremes.
-        // To not run into these issues, we clamp the pitch to a safe range.
-        const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
-        let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
-
-        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
-    }
+    // Top side of floor
+    commands.spawn((
+        Mesh3d(floor.clone()),
+        MeshMaterial3d(white_material.clone()),
+    ));
+    // Under side of floor
+    commands.spawn((
+        Mesh3d(floor.clone()),
+        MeshMaterial3d(white_material.clone()),
+        Transform::from_xyz(0.0, -0.01, 0.0).with_rotation(Quat::from_rotation_x(PI)),
+    ));
+    // Blue sphere
+    commands.spawn((
+        Mesh3d(sphere.clone()),
+        MeshMaterial3d(blue_material.clone()),
+        Transform::from_xyz(3.0, 1.5, 0.0),
+    ));
+    // Tall wall
+    commands.spawn((
+        Mesh3d(wall.clone()),
+        MeshMaterial3d(white_material.clone()),
+        Transform::from_xyz(-3.0, 2.0, 0.0),
+    ));
+    // Cube behind wall
+    commands.spawn((
+        Mesh3d(cube.clone()),
+        MeshMaterial3d(blue_material.clone()),
+        Transform::from_xyz(-4.2, 0.5, 0.0),
+    ));
+    // Hidden cube under floor
+    commands.spawn((
+        Mesh3d(cube.clone()),
+        MeshMaterial3d(red_material.clone()),
+        Transform {
+            translation: Vec3::new(3.0, -2.0, 0.0),
+            rotation: Quat::from_euler(EulerRot::YXZEx, FRAC_PI_4, FRAC_PI_4, 0.0),
+            ..default()
+        },
+    ));
 }
 
 fn change_mode(

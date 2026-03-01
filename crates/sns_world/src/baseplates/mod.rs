@@ -38,9 +38,13 @@ impl Default for WorldPlate {
 }
 
 impl WorldPlate {
+    pub fn climate_update(&mut self, world_pos: Vec2, seed: i32) {
+        self.climate_plate.climate_update(world_pos, seed, &self.noise_fields, &self.base_rules);
+    }
+
     pub fn local_update(&mut self, world_pos: Vec2, seed: i32) {
         let mut sampler = LocalPlateSampler {
-            climate_cache: &self.climate_plate.cache,
+            climate_cache: &self.climate_plate.climate_cache,
             terrain_plate: &self.terrain_plate,
             base_rules: &self.base_rules,
             noise_fields: &self.noise_fields,
@@ -53,13 +57,13 @@ impl WorldPlate {
 
 pub struct ClimatePlate {
     pipeline: ClimatePipeline,
-    cache: GridSampleCache<ClimateSample>,
+    climate_cache: GridSampleCache<ClimateSample>,
 }
 impl Default for ClimatePlate {
     fn default() -> Self {
         Self {
             pipeline: ClimatePipeline::default(),
-            cache: GridSampleCache::new(6, 512.0),
+            climate_cache: GridSampleCache::new(6, 512.0),
         }
     }
 }
@@ -70,14 +74,16 @@ impl ClimatePlate {
         world_pos: Vec2,
         seed: i32,
         noise_fields: &NoiseFields<NoiseId>,
+        base_rules: &BaseRules,
     ) {
         let mut sampler = ClimateGridSampler {
             pipeline: &self.pipeline,
-            grid_size: self.cache.get_grid_size(),
+            grid_size: self.climate_cache.get_grid_size(),
             noise_fields,
+            base_rules,
         };
 
-        self.cache.update(&mut sampler, world_pos, seed);
+        self.climate_cache.update(&mut sampler, world_pos, seed);
     }
 }
 #[derive(Default)]
@@ -156,6 +162,7 @@ impl FieldGenerator {
 pub struct ClimateGridSampler<'a> {
     pipeline: &'a ClimatePipeline,
     noise_fields: &'a NoiseFields<NoiseId>,
+    base_rules: &'a BaseRules,
     grid_size: f32,
 }
 
@@ -166,7 +173,9 @@ impl<'a> GridSampler<ClimateSample> for ClimateGridSampler<'a> {
             grid_coord.y as f32 * self.grid_size,
         );
 
-        self.pipeline.sample(world_pos, seed, self.noise_fields)
+        let mut samples = self.pipeline.sample(world_pos, seed, self.noise_fields);
+        self.base_rules.apply_rules(samples.get_mut_biome_samples());
+        samples
     }
 }
 pub struct LocalPlateSampler<'a> {
@@ -205,7 +214,6 @@ impl<'a> GridSampler<LocalPlateSample> for LocalPlateSampler<'a> {
 
         // interpolate ONLY from already-updated climate cache
         let mut climate = self.interpolate(world_pos);
-
         self.base_rules.apply_rules(climate.get_mut_biome_samples());
 
         self.terrain_plate
