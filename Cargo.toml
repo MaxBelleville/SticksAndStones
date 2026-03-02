@@ -33,7 +33,7 @@ smallvec = "1.15.1"
 bitflags = {version = "2.10.0", features = ["bytemuck"]}
 lru = "0.16.3"
 serde_json = "1.0.149"
-
+nonmax = "0.5.5"
 
 [dependencies]
 bevy = { version = "0.18.0", features = [
@@ -51,7 +51,10 @@ moonshine-behavior = "0.4.1"
 spacetimedb-sdk = "1.11.1"
 bevy_skein = "0.5.0"
 bevy_console = "0.17.1"
-bitflags ={workspace = true}
+bitflags = {workspace = true}
+nonmax =  {workspace = true}
+bytemuck = {workspace = true}
+
 
 sns_core = { path = "crates/sns_core" }
 sns_world = { path = "crates/sns_world" }

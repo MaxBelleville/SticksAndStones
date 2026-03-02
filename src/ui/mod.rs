@@ -1,4 +1,4 @@
-use bevy::{app::PluginGroupBuilder, prelude::*, render::extract_resource::ExtractResource};
+use bevy::{app::PluginGroupBuilder, camera::visibility::RenderLayers, prelude::*, render::extract_resource::ExtractResource};
 
 use crate::renderer;
 
@@ -39,7 +39,7 @@ pub enum GameState {
     #[default]
     Normal,
     Inventory,
-    QuickMenu,
+    QuickSelect,
     Chat,
     Interaction,
     PlayerList,
@@ -95,5 +95,6 @@ fn setup(mut commands: Commands) {
             order: renderer::CameraOrder::Ui.into(), // Render second (on top)
             ..default()
         },
+        RenderLayers::from(renderer::RenderLayer::UI),//Probably not needed but just to be safe
     ));
 }

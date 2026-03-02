@@ -31,7 +31,7 @@ pub enum Input {
     // Menus
     Pause,
     Inventory,
-    QuickMenu,
+    QuickSelect,
     Chat,
     Interaction, //Not necessarily a menu but typically is
     Map,
@@ -57,7 +57,7 @@ impl Input {
     const MENUS: [Self; 9] = [
         Input::Pause,
         Input::Inventory,
-        Input::QuickMenu,
+        Input::QuickSelect,
         Input::Chat,
         Input::Interaction,
         Input::PlayerList,
@@ -101,7 +101,7 @@ impl Input {
         input_map.insert(Input::SwapForward, KeyCode::KeyZ);
         input_map.insert(Input::SwapBackward, KeyCode::KeyC);
 
-        input_map.insert(Input::QuickMenu, KeyCode::Backquote);
+        input_map.insert(Input::QuickSelect, KeyCode::Backquote);
         input_map.insert(Input::Inventory, KeyCode::KeyI);
         input_map.insert(Input::Chat, KeyCode::KeyT);
         input_map.insert(Input::Interaction, KeyCode::KeyF);
@@ -319,7 +319,7 @@ fn change_mode(
             let target_state = match input {
                 Input::Pause => ui::GameState::Paused,
                 Input::Inventory => ui::GameState::Inventory,
-                Input::QuickMenu => ui::GameState::QuickMenu,
+                Input::QuickSelect => ui::GameState::QuickSelect,
                 Input::Chat => ui::GameState::Chat,
                 Input::Interaction => ui::GameState::Interaction,
                 Input::PlayerList => ui::GameState::PlayerList,
