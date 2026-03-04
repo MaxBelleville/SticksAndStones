@@ -8,8 +8,7 @@ use bevy::{
     light::ShadowFilteringMethod,
     post_process::bloom::Bloom,
     prelude::*,
-    render::view::Hdr,
-    window::PrimaryWindow,
+    render::{extract_component::ExtractComponent, view::Hdr},
 };
 use leafwing_input_manager::prelude::*;
 
@@ -166,9 +165,11 @@ struct Player;
 #[require(Transform, Visibility)]
 pub struct CameraPivot;
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, ExtractComponent,Clone)]
 #[require(Transform, Visibility)]
-struct WorldModelCamera;
+pub struct WorldModelCamera;
+
+
 
 fn spawn_player(mut commands: Commands) {
     commands
@@ -204,8 +205,7 @@ fn spawn_player(mut commands: Commands) {
                         ),
                         (
                             Msaa::Off,
-                            TemporalAntiAliasing::default(),
-                            ShadowFilteringMethod::Temporal,
+                      
                             DeferredPrepass,
                         ),
                     ));

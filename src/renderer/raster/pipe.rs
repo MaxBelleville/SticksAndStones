@@ -1,17 +1,10 @@
-use bevy::pbr::{SetMaterialBindGroup, SetMeshViewEmptyBindGroup};
-use bevy::render::render_phase::{
-    PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass,
-};
-use bevy::render::render_resource::{
-    BindGroupLayout, BindGroupLayoutDescriptor, CompareFunction, DepthStencilState, TextureFormat,
-};
 
 use bevy::{
     ecs::system::{SystemParamItem, lifetimeless::SRes},
     mesh::MeshVertexBufferLayoutRef,
     pbr::{
-        DrawMesh, MeshInputUniform, MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey,
-        MeshUniform, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
+        MeshInputUniform, MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey,
+        MeshUniform, RenderMeshInstances
     },
     prelude::*,
     render::{
@@ -23,8 +16,8 @@ use bevy::{
         },
         mesh::{RenderMesh, allocator::MeshAllocator},
         render_asset::RenderAssets,
-        render_phase::SetItemPipeline,
         render_resource::{
+            BindGroupLayoutDescriptor, CompareFunction, DepthStencilState, TextureFormat,
             ColorTargetState, ColorWrites, Face, FragmentState, PrimitiveState,
             RenderPipelineDescriptor, SpecializedMeshPipeline, SpecializedMeshPipelineError,
             VertexState,
@@ -76,7 +69,7 @@ impl SpecializedMeshPipeline for GBufferMeshPipeline {
             vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
         if layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
-              vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(1));
+              vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(1));
         }
 
         // This will automatically generate the correct `VertexBufferLayout` based on the vertex attributes
@@ -90,6 +83,11 @@ impl SpecializedMeshPipeline for GBufferMeshPipeline {
             }),
             Some(ColorTargetState {
                 format: TextureFormat::Rgba16Float, // Normal
+                blend: None,
+                write_mask: ColorWrites::ALL,
+            }),
+             Some(ColorTargetState {
+                format: TextureFormat::Rgba8Unorm, // Material
                 blend: None,
                 write_mask: ColorWrites::ALL,
             }),

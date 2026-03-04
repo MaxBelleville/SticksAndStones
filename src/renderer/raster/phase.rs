@@ -23,8 +23,6 @@ pub type DrawGBufferMeshCommands = (
     DrawMesh,
 );
 
-
-
 pub struct RasterGBuffer3D {
     pub sort_key: FloatOrd,
     pub entity: (Entity, MainEntity),

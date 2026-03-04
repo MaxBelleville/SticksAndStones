@@ -1,5 +1,3 @@
-//! A shader showing how to use the vertex position data to output the 
-//! stencil in the right position
 
 // First we import everything we need from bevy_pbr
 // A 2d shader would be vevry similar but import from bevy_sprite instead
@@ -46,6 +44,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 struct FragmentOutput {
     @location(0) albedo: vec4<f32>,
     @location(1) normal: vec4<f32>,
+    @location(2) material: vec4<f32>,
 };
 
 @group(3) @binding(0)
@@ -80,14 +79,22 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
         in.uv // TEMP, replace with UV later
     );
 
-     let normal_color = textureSample(
+    let normal_color = textureSample(
         normal_texture,
         normal_sampler,
         in.uv // TEMP, replace with UV later
     );
 
+    let material_color = textureSample(
+        metallic_roughness_texture,
+        metallic_roughness_sampler,
+        in.uv // TEMP, replace with UV later
+    );
+
     out.albedo = tex_color * material.base_color;
     out.normal = normal_color;
+    out.material = material_color * vec4(material.metallic, material.roughness, 0.0, 0.0); // Not sure if correct lol.
+
 
     return out;
 }

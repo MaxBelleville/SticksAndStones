@@ -8,17 +8,15 @@ use bevy::{
     prelude::*,
     render::{
         camera::ExtractedCamera,
-        render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
+        render_graph::{NodeRunError, RenderGraphContext, ViewNode},
         render_phase::ViewSortedRenderPhases,
         render_resource::RenderPassDescriptor,
         renderer::RenderContext,
-        view::{ExtractedView, ViewTarget},
+        view::ExtractedView,
     },
 };
 use super::utils;
 
-#[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
-pub struct RasterGBufferLabel;
 
 #[derive(Default)]
 pub struct RasterGBufferNode;
@@ -26,7 +24,6 @@ impl ViewNode for RasterGBufferNode {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
-        &'static ViewTarget,
         Option<&'static MainPassResolutionOverride>,
     );
 
@@ -34,7 +31,7 @@ impl ViewNode for RasterGBufferNode {
         &self,
         graph: &mut RenderGraphContext,
         render_context: &mut RenderContext<'w>,
-        (camera, view, target, resolution_override): QueryItem<'w, '_, Self::ViewQuery>,
+        (camera, view, resolution_override): QueryItem<'w, '_, Self::ViewQuery>,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
@@ -52,23 +49,24 @@ impl ViewNode for RasterGBufferNode {
         };
 
         // get GBuffer targets (render-world resource)
-        let gbuffer = match world.get_resource::<utils::GBufferTargets>() {
+        let scene = match world.get_resource::<utils::SceneTargets>() {
             Some(g) => g,
             None => return Ok(()),
         };
 
-        let albedo_view = match &gbuffer.albedo {
-            Some(t) => &t.default_view,
-            None => return Ok(()),
+        let Some(albedo_view) =  scene.albedo_view() else {
+            return Ok(());
         };
-        let normal_view = match &gbuffer.normal {
-            Some(t) => &t.default_view,
-            None => return Ok(()),
+        let Some(normal_view) =  scene.normal_view() else {
+            return Ok(());
         };
-        let depth_view = match &gbuffer.depth {
-            Some(t) => &t.default_view,
-            None => return Ok(()),
+        let Some(material_view) =  scene.material_view() else {
+            return Ok(());
         };
+        let Some(depth_view) =  scene.raster_depth_view() else {
+            return Ok(());
+        };
+
 
          let color_attachments = &[
             Some(RenderPassColorAttachment {
@@ -82,6 +80,15 @@ impl ViewNode for RasterGBufferNode {
             }),
             Some(RenderPassColorAttachment {
                 view: normal_view,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Clear(LinearRgba::BLACK.into()), // neutral normal
+                    store: StoreOp::Store,
+                },
+                depth_slice: None,
+            }),
+            Some(RenderPassColorAttachment {
+                view: material_view,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Clear(LinearRgba::BLACK.into()), // neutral normal
@@ -112,13 +119,13 @@ impl ViewNode for RasterGBufferNode {
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-
+        
         if let Some(viewport) =
             Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)
         {
             render_pass.set_camera_viewport(&viewport);
         }
-
+       
         // Render the phase
         // This will execute each draw functions of each phase items queued in this phase
         if let Err(err) = raster_phase.render(&mut render_pass, world, view_entity) {

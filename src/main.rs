@@ -9,7 +9,7 @@ use bevy_skein::SkeinPlugin;
 use iyes_progress::ProgressPlugin;
 use leafwing_input_manager::prelude::*;
 
-use crate::renderer::utils::RasterMaterial;
+use crate::renderer::RasterMaterial;
 
 
 mod ambassadors;

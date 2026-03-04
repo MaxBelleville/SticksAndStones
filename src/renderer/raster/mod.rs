@@ -11,7 +11,7 @@ use bevy::{
         Extract, Render, RenderApp, RenderStartup, RenderSystems, batching::
             gpu_preprocessing::
                 batch_and_prepare_sorted_render_phase, mesh::RenderMesh, render_asset::RenderAssets, render_graph::{
-            RenderGraphExt, ViewNodeRunner,
+            RenderGraphExt, ViewNodeRunner
         }, render_phase::{
             AddRenderCommand, DrawFunctions, PhaseItemExtraIndex, ViewSortedRenderPhases, sort_phase_system
         }, render_resource::{
@@ -20,10 +20,15 @@ use bevy::{
     },
 };
 mod pipe;
-pub mod phase;
+mod phase;
 mod node;
+use crate::player;
 
 use super::utils;
+
+
+pub use phase::RasterGBuffer3D;
+
 
 pub struct RasterPlugin;
 
@@ -37,7 +42,7 @@ impl Plugin for RasterPlugin {
             .init_resource::<DrawFunctions<phase::RasterGBuffer3D>>()
             .add_render_command::<phase::RasterGBuffer3D, phase::DrawGBufferMeshCommands>()
             .init_resource::<ViewSortedRenderPhases<phase::RasterGBuffer3D>>()
-            .add_systems(RenderStartup, init_mesh_pipeline)
+            .add_systems(RenderStartup, init_mesh_pipeline.after(super::prepare_scene_targets))
             .add_systems(ExtractSchedule, extract_camera_phases)
             .add_systems(
                 Render,
@@ -50,9 +55,9 @@ impl Plugin for RasterPlugin {
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<node::RasterGBufferNode>>(Core3d, node::RasterGBufferLabel)
+            .add_render_graph_node::<ViewNodeRunner<node::RasterGBufferNode>>(Core3d, utils::RasterLabel)
             // Tell the node to run after the main pass
-            .add_render_graph_edges(Core3d, (Node3d::StartMainPass, node::RasterGBufferLabel));
+            .add_render_graph_edges(Core3d, (Node3d::MainOpaquePass, utils::RasterLabel));
 
     }
     
@@ -64,7 +69,7 @@ impl Plugin for RasterPlugin {
 // that phase
 fn extract_camera_phases(
     mut raster_phases: ResMut<ViewSortedRenderPhases<phase::RasterGBuffer3D>>,
-    cameras: Extract<Query<(Entity, &Camera), With<Camera3d>>>,
+     cameras: Extract<Query<(Entity, &Camera), (With<Camera3d>, With<player::WorldModelCamera>)>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
 ) {
     live_entities.clear();
@@ -110,7 +115,10 @@ fn queue_meshes(
     render_meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
     mut render_phases: ResMut<ViewSortedRenderPhases<phase::RasterGBuffer3D>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
+    mut views: Query<
+    (&ExtractedView, &RenderVisibleEntities, &Msaa),
+    With<player::WorldModelCamera>
+    >
 ) {
     for (view, visible_entities, msaa) in &mut views {
         let Some(phase) = render_phases.get_mut(&view.retained_view_entity) else {
@@ -135,14 +143,14 @@ fn queue_meshes(
             let Some(mesh) = render_meshes.get(mesh_instance.mesh_asset_id) else {
                 continue;
             };
-
+         
             // Specialize the key for the current mesh entity
             // For this example we only specialize based on the mesh topology
             // but you could have more complex keys and that's where you'd need to create those keys
             let mut mesh_key = view_key;
             mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
             
-            mesh_key |= MeshPipelineKey::DEFERRED_PREPASS |  MeshPipelineKey::DEPTH_PREPASS | MeshPipelineKey::MOTION_VECTOR_PREPASS;
+            mesh_key |= MeshPipelineKey::DEFERRED_PREPASS;
 
             let pipeline_id = pipelines.specialize(
                 &pipeline_cache,
