@@ -60,7 +60,7 @@ fn prepare_bind_group(
             )),
         );
         commands
-            .insert_resource(utils::Binder::<utils::Raymarch>::new_empty(bind_group));
+            .insert_resource(utils::BindersRes::<utils::Raymarch>::new_empty(bind_group));
     
 }
 #[derive(Default)]

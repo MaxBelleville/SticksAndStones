@@ -168,7 +168,6 @@ impl Material for RasterMaterial {
 #[derive(ShaderType, Clone, Copy, Pod, Zeroable)]
 pub struct FrameUniform {
     pub res: Vec2,
-    pub frame_index: u32,
     pub sun_pos: Vec3,
 }
 
@@ -185,28 +184,62 @@ impl FrameBindLayout {
     }
 }
 
-#[derive(Resource)]
-pub struct Binder<T> {
+pub struct Binder {
     group: BindGroup,
     offsets: Vec<u32>,
-    _marker: std::marker::PhantomData<T>,
 }
-impl<T> Binder<T> {
+impl Binder {
     pub fn new(group: BindGroup, offsets: Vec<u32>) -> Self {
-        Self {
-            group,
-            offsets,
-            _marker: std::marker::PhantomData,
-        }
-    }
-    pub fn new_empty(group: BindGroup) -> Self {
-        Self::new(group, Vec::new())
+        Self { group, offsets}
     }
     pub fn get_group(&self) -> &BindGroup {
         &self.group
     }
     pub fn get_offsets(&self) -> &[u32] {
-        &self.offsets.as_slice()
+        &self.offsets
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct BindersRes<T> {
+    binders: Vec<Binder>,
+    _marker: std::marker::PhantomData<T>,
+}
+
+
+impl<T> BindersRes<T> {
+   pub fn new(group: BindGroup, offsets: Vec<u32>) -> Self {
+        Self {
+            binders: vec![Binder::new(group, offsets)],
+            _marker: std::marker::PhantomData,
+        }
+    }
+    pub fn new_empty(group: BindGroup) -> Self {
+        Self {
+            binders: vec![Binder::new(group, Vec::new())],
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+   pub fn add_binder(&mut self, group: BindGroup, offsets: Vec<u32>) {
+        self.binders.push(Binder::new(group, offsets));
+   
+    }
+    pub fn add_binder_empty(&mut self, group: BindGroup)  {
+        self.binders.push(Binder::new(group, vec![]));
+     
+    }
+    pub fn get_binders(&self) -> &[Binder] {
+        &self.binders
+    }
+    pub fn get_len(&self) -> usize {
+        self.binders.len()
+    }
+    pub fn get_first_group(&self) -> &BindGroup {
+        &self.binders[0].group
+    }
+    pub fn get_first_offset(&self) -> &[u32] {
+        &self.binders[0].offsets
     }
 }
 

@@ -103,11 +103,17 @@ impl<P: ComputePassSpec> ViewNode for ComputeNode<P> {
         
         pass.set_pipeline(pipeline_obj);
         
-        let frame = world.resource::<utils::Binder<P::Frame>>();
-        let pass_binder = world.resource::<utils::Binder<P::Marker>>();
+        let frame_binders = world.resource::<utils::BindersRes<P::Frame>>();
+        let pass_binders = world.resource::<utils::BindersRes<P::Marker>>();
 
-        pass.set_bind_group(0, frame.get_group(), frame.get_offsets());
-        pass.set_bind_group(1, pass_binder.get_group(), pass_binder.get_offsets());
+        for (index,frame) in frame_binders.get_binders().iter().enumerate() {
+            pass.set_bind_group(index as u32, frame.get_group(), frame.get_offsets());
+        }
+        let offset = frame_binders.get_len();
+
+        for (index,binder) in pass_binders.get_binders().iter().enumerate() {
+            pass.set_bind_group((offset + index) as u32, binder.get_group(), binder.get_offsets());
+        }
 
         let size = utils::dispatch_size(settings.dim);
         pass.dispatch_workgroups(size.x, size.y, size.z);

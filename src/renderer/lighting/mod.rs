@@ -57,7 +57,7 @@ fn prepare_bind_group(
             scene.hdr_view().unwrap(),
         )),
     );
-    commands.insert_resource(utils::Binder::<utils::Lighting>::new_empty(bind_group));
+    commands.insert_resource(utils::BindersRes::<utils::Lighting>::new_empty(bind_group));
 }
 #[derive(Default)]
 pub struct LightingPass;

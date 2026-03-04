@@ -165,9 +165,6 @@ struct Player;
 #[require(Transform, Visibility)]
 pub struct CameraPivot;
 
-#[derive(Component, Debug, ExtractComponent,Clone)]
-#[require(Transform, Visibility)]
-pub struct WorldModelCamera;
 
 
 
@@ -184,7 +181,7 @@ fn spawn_player(mut commands: Commands) {
                 .spawn((CameraPivot, Transform::IDENTITY, Visibility::default()))
                 .with_children(|head| {
                     head.spawn((
-                        WorldModelCamera,
+                        renderer::WorldModelCamera,
                         Camera3d::default(),
                         Projection::from(PerspectiveProjection {
                             fov: 75.0_f32.to_radians(),
@@ -195,8 +192,7 @@ fn spawn_player(mut commands: Commands) {
                             clear_color: Color::srgb_u8(15, 9, 20).into(),
                             ..default()
                         },
-                        Tonemapping::TonyMcMapface,
-                        Bloom::NATURAL,
+ 
                         Hdr,
                         RenderLayers::from(
                             renderer::RenderLayer::DEFAULT
@@ -205,13 +201,12 @@ fn spawn_player(mut commands: Commands) {
                         ),
                         (
                             Msaa::Off,
-                      
-                            DeferredPrepass,
                         ),
                     ));
 
                     // Spawn view model camera.
                     head.spawn((
+                        renderer::ViewModelCamera,
                         Camera3d::default(),
                         Camera {
                             // Bump the order to render on top of the world model.
@@ -226,10 +221,9 @@ fn spawn_player(mut commands: Commands) {
                             fov: 62.0_f32.to_radians(),
                             ..default()
                         }),
-                        Tonemapping::TonyMcMapface,
                         // Only render objects belonging to the view model.
                         RenderLayers::from(renderer::RenderLayer::VIEW_MODEL),
-                        (DepthPrepass, Msaa::Off, DeferredPrepass, Fxaa::default()),
+                        (DepthPrepass, Msaa::Off, Fxaa::default()),
                     ));
                 });
         });

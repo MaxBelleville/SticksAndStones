@@ -3,7 +3,7 @@ use bevy::{
     core_pipeline::core_3d::graph::{Core3d, Node3d},
     math::FloatOrd,
     pbr::{
-        MeshPipeline, MeshPipelineKey, RenderMeshInstances,
+        MeshPipeline, MeshPipelineKey, RenderMaterialInstances, RenderMeshInstances
     },
     platform::collections::HashSet,
     prelude::*,
@@ -22,10 +22,9 @@ use bevy::{
 mod pipe;
 mod phase;
 mod node;
-use crate::player;
 
 use super::utils;
-
+use super::WorldModelCamera;
 
 pub use phase::RasterGBuffer3D;
 
@@ -69,7 +68,7 @@ impl Plugin for RasterPlugin {
 // that phase
 fn extract_camera_phases(
     mut raster_phases: ResMut<ViewSortedRenderPhases<phase::RasterGBuffer3D>>,
-     cameras: Extract<Query<(Entity, &Camera), (With<Camera3d>, With<player::WorldModelCamera>)>>,
+     cameras: Extract<Query<(Entity, &Camera), (With<Camera3d>, With<WorldModelCamera>)>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
 ) {
     live_entities.clear();
@@ -98,12 +97,12 @@ fn init_mesh_pipeline(
     // Load the shader
     let shader_handle: Handle<Shader> = asset_server.load(utils::RASTER_SHADER_PATH);
 
-    let materia_layout =utils::RasterMaterial::bind_group_layout_descriptor(&render_device);
+    let material_layout =utils::RasterMaterial::bind_group_layout_descriptor(&render_device);
 
     commands.insert_resource(pipe::GBufferMeshPipeline::new(
         mesh_pipeline.clone(),
         shader_handle,
-        materia_layout
+        material_layout
     ));
 }
 
@@ -114,10 +113,11 @@ fn queue_meshes(
     draw_pipeline: Res<pipe::GBufferMeshPipeline>,
     render_meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
+    material_instances: Res<RenderMaterialInstances>,
     mut render_phases: ResMut<ViewSortedRenderPhases<phase::RasterGBuffer3D>>,
     mut views: Query<
     (&ExtractedView, &RenderVisibleEntities, &Msaa),
-    With<player::WorldModelCamera>
+    With<WorldModelCamera>
     >
 ) {
     for (view, visible_entities, msaa) in &mut views {
@@ -150,12 +150,26 @@ fn queue_meshes(
             let mut mesh_key = view_key;
             mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
             
-            mesh_key |= MeshPipelineKey::DEFERRED_PREPASS;
+            //mesh_key |= MeshPipelineKey::MOTION_VECTOR_PREPASS;
+            let Some(material_instance) = material_instances.instances.get(visible_entity) else {
+                continue;
+            };
+            let result = material_instance.asset_id.try_typed();
+            if result.is_err() {
+                continue;
+            }
+            let mat_asset_id = result.unwrap();
+
+
+            let key = pipe::GBufferPipelineKey {
+                mesh_key,
+                material_id: mat_asset_id,
+            };
 
             let pipeline_id = pipelines.specialize(
                 &pipeline_cache,
                 &draw_pipeline,
-                mesh_key,
+                key,
                 &mesh.layout,
             );
             let pipeline_id = match pipeline_id {

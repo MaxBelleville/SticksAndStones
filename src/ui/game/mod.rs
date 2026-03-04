@@ -54,7 +54,7 @@ fn spawn_world(
     let floor = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(10.0)));
     let sphere = meshes.add(Sphere::new(0.5));
     let wall = meshes.add(Cuboid::new(0.2, 4.0, 3.0));
-
+    
     let blue_material = materials.add(Color::srgb_u8(0, 0, 255));
     let red_material = materials.add(Color::srgb_u8(255, 0, 0));
     let white_material = materials.add(Color::srgb_u8(255, 255, 255));

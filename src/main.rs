@@ -23,7 +23,6 @@ mod renderer;
 fn main() {
     App::new()
         .insert_resource(ui::ExtractedManagerState(ui::ManagerState::default()))
-        .insert_resource(DefaultOpaqueRendererMethod::deferred())
         .insert_resource(GlobalAmbientLight::NONE)
         .init_resource::<ActionState<player::Input>>()
         .add_plugins((

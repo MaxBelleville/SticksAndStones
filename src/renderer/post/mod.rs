@@ -52,7 +52,7 @@ fn prepare_bind_group(
             &BindGroupEntries::sequential((scene.hdr_view().unwrap(), scene.ldr_view().unwrap())),
         );
         commands
-            .insert_resource(utils::Binder::<utils::Post>::new_empty(bind_group));
+            .insert_resource(utils::BindersRes::<utils::Post>::new_empty(bind_group));
     
 }
 #[derive(Default)]

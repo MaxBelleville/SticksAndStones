@@ -3,7 +3,7 @@ use bevy::app::PluginGroupBuilder;
 use bevy::camera::visibility::RenderLayers;
 
 use bevy::render::RenderStartup;
-use bevy::render::extract_component::ExtractComponentPlugin;
+use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 use bevy::render::render_resource::binding_types::uniform_buffer;
 use bevy::render::render_resource::{
     BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries, PipelineCache,
@@ -19,24 +19,22 @@ use bevy::{
         extract_resource::ExtractResourcePlugin,
         render_phase::SortedRenderPhasePlugin,
         render_resource::UniformBuffer,
-        render_resource::{
-            Extent3d, TextureFormat, TextureUsages,
-        },
+        render_resource::{Extent3d, TextureFormat, TextureUsages},
         renderer::RenderDevice,
         texture::TextureCache,
     },
 };
 use bitflags::bitflags;
 
+mod blit;
 mod compatability;
 mod compute;
 mod lighting;
 mod post;
 mod raster;
 mod raymarch;
-mod blit;
 mod utils;
-use crate::player;
+
 use crate::window::WindowSettings;
 pub struct RendererPlugins;
 pub use utils::RasterMaterial;
@@ -61,7 +59,7 @@ impl Plugin for RendererPlugin {
     fn build(&self, app: &mut App) {
         //Init resources and any thing that is shared between folders.
         app.add_plugins((
-            ExtractComponentPlugin::<player::WorldModelCamera>::default(),
+            ExtractComponentPlugin::<WorldModelCamera>::default(),
             ExtractResourcePlugin::<WindowSettings>::default(),
             SortedRenderPhasePlugin::<raster::RasterGBuffer3D, MeshPipeline>::new(
                 RenderDebugFlags::default(),
@@ -152,35 +150,48 @@ pub fn prepare_shared_group(
     view_uniforms: Res<ViewUniforms>,
     queue: Res<RenderQueue>,
     settings: Res<WindowSettings>,
-    views: Query<(Entity, &ViewUniformOffset), (With<ExtractedView>, With<player::WorldModelCamera>)>
+    views: Query<
+        (Entity, &ViewUniformOffset),
+        (With<ExtractedView>, With<WorldModelCamera>),
+    >,
 ) {
     let Some(view_binding) = view_uniforms.uniforms.binding() else {
         return;
     };
-   let Ok((_, view_offset)) = views.single() else {
+    let Ok((_, view_offset)) = views.single() else {
         return;
     };
-   
+
     let mut frame_buffer = UniformBuffer::from(utils::FrameUniform {
         res: vec2(settings.dim.z, settings.dim.w),
-        frame_index: 0,
         sun_pos: Vec3::ZERO,
     });
 
     frame_buffer.write_buffer(&render_device, &queue);
-    
+
     let bind_group = render_device.create_bind_group(
         None,
         &pipeline_cache.get_bind_group_layout(&frame_layout.get_layout()),
         &BindGroupEntries::sequential((view_binding.clone(), frame_buffer.binding().unwrap())),
     );
-
-    commands.insert_resource(utils::Binder::<utils::Frame>::new(
-            bind_group,
-            vec![view_offset.offset],
-        ));
-  
+    
+    commands.insert_resource(utils::BindersRes::<utils::Frame>::new( bind_group, vec![view_offset.offset]));
 }
+
+#[derive(Component, Debug, ExtractComponent,Clone)]
+#[require(Transform, Visibility)]
+pub struct WorldModelCamera;
+
+#[derive(Component, Debug, ExtractComponent,Clone)]
+#[require(Transform, Visibility)]
+pub struct ViewModelCamera;
+
+#[derive(Component, Debug, ExtractComponent,Clone)]
+#[require(Transform, Visibility)]
+pub struct UIModelCamera;
+
+
+
 
 pub enum CameraOrder {
     World,

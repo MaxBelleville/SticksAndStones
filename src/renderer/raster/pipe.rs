@@ -27,6 +27,14 @@ use bevy::{
 };
 use nonmax::NonMaxU32;
 
+use crate::renderer::RasterMaterial;
+
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub struct GBufferPipelineKey {
+    pub mesh_key: MeshPipelineKey,
+    pub material_id: AssetId<RasterMaterial>,
+}
 
 // This contains the state needed to specialize a mesh pipeline
 #[derive(Resource)]
@@ -55,7 +63,7 @@ impl GBufferMeshPipeline {
     }
 }
 impl SpecializedMeshPipeline for GBufferMeshPipeline {
-    type Key = MeshPipelineKey;
+    type Key = GBufferPipelineKey;
 
     fn specialize(
         &self,
@@ -71,7 +79,7 @@ impl SpecializedMeshPipeline for GBufferMeshPipeline {
         if layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
               vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(1));
         }
-
+    
         // This will automatically generate the correct `VertexBufferLayout` based on the vertex attributes
         let vertex_buffer_layout = layout.0.get_layout(&vertex_attributes)?;
 
@@ -92,10 +100,10 @@ impl SpecializedMeshPipeline for GBufferMeshPipeline {
                 write_mask: ColorWrites::ALL,
             }),
         ];
-
+        let mesh_key = key.mesh_key;
         let view_layout = self
             .mesh_pipeline
-            .get_view_layout(MeshPipelineViewLayoutKey::from(key));
+            .get_view_layout(MeshPipelineViewLayoutKey::from(mesh_key));
         Ok(RenderPipelineDescriptor {
             label: Some("Specialized Mesh Pipeline".into()),
             // We want to reuse the data from bevy so we use the same bind groups as the default
@@ -120,7 +128,7 @@ impl SpecializedMeshPipeline for GBufferMeshPipeline {
                 ..default()
             }),
             primitive: PrimitiveState {
-                topology: key.primitive_topology(),
+                topology: mesh_key.primitive_topology(),
                 cull_mode: Some(Face::Back),
                 ..default()
             },
@@ -177,7 +185,7 @@ impl GetBatchData for GBufferMeshPipeline {
                 flags: mesh_transforms.flags,
                 first_vertex_index,
                 current_skin_index: u32::MAX,
-                material_and_lightmap_bind_group_slot: 0,
+                material_and_lightmap_bind_group_slot:  0,
                 tag: 0,
                 pad: 0,
             }

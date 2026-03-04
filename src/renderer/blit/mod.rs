@@ -6,7 +6,7 @@ use bevy::{
     ecs::query::QueryItem,
     prelude::*,
     render::{
-        Render, RenderApp, RenderStartup, RenderSystems, render_graph::{
+        Render, RenderApp, RenderSystems, render_graph::{
             NodeRunError, RenderGraphContext, RenderGraphExt as _, ViewNode, ViewNodeRunner,
         }, render_resource::{
             BindGroupEntries, CachedRenderPipelineId, LoadOp, Operations, PipelineCache,
@@ -57,7 +57,7 @@ impl ViewNode for BlitNode {
             return Ok(());
         };
 
-        let bind_group = world.resource::<utils::Binder<utils::Blit>>();
+        let bind_group = world.resource::<utils::BindersRes<utils::Blit>>();
         
         let mut pass = render_context
             .command_encoder()
@@ -78,7 +78,7 @@ impl ViewNode for BlitNode {
             });
 
         pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, bind_group.get_group(), bind_group.get_offsets());
+        pass.set_bind_group(0, bind_group.get_first_group(), bind_group.get_first_offset());
         pass.draw(0..3, 0..1);
 
         Ok(())
@@ -120,5 +120,5 @@ fn prepare_bind_group(
         &pipeline_cache.get_bind_group_layout(&pipeline.layout),
         &BindGroupEntries::sequential((scene.ldr_view().unwrap(), &pipeline.sampler)),
     );
-    commands.insert_resource(utils::Binder::<utils::Blit>::new_empty(bind_group));
+    commands.insert_resource(utils::BindersRes::<utils::Blit>::new_empty(bind_group));
 }

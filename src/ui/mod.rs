@@ -96,5 +96,6 @@ fn setup(mut commands: Commands) {
             ..default()
         },
         RenderLayers::from(renderer::RenderLayer::UI),//Probably not needed but just to be safe
+        renderer::UIModelCamera,
     ));
 }
