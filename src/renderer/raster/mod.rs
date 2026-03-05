@@ -28,6 +28,10 @@ use super::WorldModelCamera;
 
 pub use phase::RasterGBuffer3D;
 
+//Note technically this might be possible to be done just using the specialize function in the material.
+//But it's easier to control and modify this (ie manually creating a specialized mesh pipeline), 
+//For example the phases would be connected to the normal bevy renderer which would make it harder to connect to raymarch.
+//So although it's a bit of a duplication of systems, it's helpful.
 
 pub struct RasterPlugin;
 

@@ -93,7 +93,7 @@ fn spawn_world(
         Mesh3d(cube.clone()),
         MeshMaterial3d(red_material.clone()),
         Transform {
-            translation: Vec3::new(3.0, -2.0, 0.0),
+            translation: Vec3::new(3.0, -2.0, 5.0),
             rotation: Quat::from_euler(EulerRot::YXZEx, FRAC_PI_4, FRAC_PI_4, 0.0),
             ..default()
         },

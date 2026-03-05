@@ -156,19 +156,14 @@ pub struct RasterMaterial {
     pub material_uniform: RasterMaterialUniform,
 }
 impl Material for RasterMaterial {
-    fn fragment_shader() -> ShaderRef {
-        "shaders/geom_internal.wgsl".into()
-    }
-    fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Blend
-    }
+  
 }
 
 #[repr(C)]
 #[derive(ShaderType, Clone, Copy, Pod, Zeroable)]
 pub struct FrameUniform {
     pub res: Vec2,
-    pub sun_pos: Vec3,
+    pub frame_index: u32,
 }
 
 #[derive(Resource)]

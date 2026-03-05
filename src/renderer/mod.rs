@@ -164,7 +164,7 @@ pub fn prepare_shared_group(
 
     let mut frame_buffer = UniformBuffer::from(utils::FrameUniform {
         res: vec2(settings.dim.z, settings.dim.w),
-        sun_pos: Vec3::ZERO,
+        frame_index: 0,//might nto always be true
     });
 
     frame_buffer.write_buffer(&render_device, &queue);
