@@ -16,7 +16,7 @@ use bevy::{
     },
 };
 
-use super::utils;
+use super::structs;
 
 pub struct BlitPlugin;
 
@@ -33,8 +33,8 @@ impl Plugin for BlitPlugin {
         );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<BlitNode>>(Core3d, utils::BlitLabel)
-            .add_render_graph_edges(Core3d, (utils::PostLabel, utils::BlitLabel));
+            .add_render_graph_node::<ViewNodeRunner<BlitNode>>(Core3d, structs::BlitLabel)
+            .add_render_graph_edges(Core3d, (structs::PostLabel, structs::BlitLabel));
     }
 }
 
@@ -57,7 +57,7 @@ impl ViewNode for BlitNode {
             return Ok(());
         };
 
-        let bind_group = world.resource::<utils::BindersRes<utils::Blit>>();
+        let bind_group = world.resource::<structs::BindersRes<structs::Blit>>();
         
         let mut pass = render_context
             .command_encoder()
@@ -111,7 +111,7 @@ pub fn prepare_blit_runtime(
 fn prepare_bind_group(
     mut commands: Commands,
     pipeline: Res<BlitPipeline>,
-    scene: Res<utils::SceneTargets>,
+    scene: Res<structs::SceneTargets>,
     render_device: Res<RenderDevice>,
     pipeline_cache: Res<PipelineCache>,
 ) {
@@ -120,5 +120,5 @@ fn prepare_bind_group(
         &pipeline_cache.get_bind_group_layout(&pipeline.layout),
         &BindGroupEntries::sequential((scene.ldr_view().unwrap(), &pipeline.sampler)),
     );
-    commands.insert_resource(utils::BindersRes::<utils::Blit>::new_empty(bind_group));
+    commands.insert_resource(structs::BindersRes::<structs::Blit>::new_empty(bind_group));
 }

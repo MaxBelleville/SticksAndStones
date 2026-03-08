@@ -2,7 +2,6 @@ use bevy::{
     asset::AssetMetaCheck,
     diagnostic::FrameTimeDiagnosticsPlugin,
     gltf::{GltfPlugin, convert_coordinates::GltfConvertCoordinates},
-    pbr::DefaultOpaqueRendererMethod,
     prelude::*,
 };
 use bevy_skein::SkeinPlugin;

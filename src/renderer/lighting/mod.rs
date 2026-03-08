@@ -15,7 +15,7 @@ use bevy::{
 pub struct LightingPlugin;
 
 use super::compute;
-use super::utils;
+use super::structs;
 
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
@@ -34,15 +34,15 @@ impl Plugin for LightingPlugin {
         render_app
             .add_render_graph_node::<ViewNodeRunner<compute::ComputeNode<LightingPass>>>(
                 Core3d,
-                utils::LightingLabel,
+                structs::LightingLabel,
             )
-            .add_render_graph_edges(Core3d, (utils::RaymarchLabel, utils::LightingLabel));
+            .add_render_graph_edges(Core3d, (structs::RaymarchLabel, structs::LightingLabel));
     }
 }
 fn prepare_bind_group(
     mut commands: Commands,
     pipeline: Res<compute::ComputePipelineRes<LightingPass>>,
-    scene: Res<utils::SceneTargets>,
+    scene: Res<structs::SceneTargets>,
     render_device: Res<RenderDevice>,
     pipeline_cache: Res<PipelineCache>,
 ) {
@@ -57,16 +57,16 @@ fn prepare_bind_group(
             scene.hdr_view().unwrap(),
         )),
     );
-    commands.insert_resource(utils::BindersRes::<utils::Lighting>::new_empty(bind_group));
+    commands.insert_resource(structs::BindersRes::<structs::Lighting>::new_empty(bind_group));
 }
 #[derive(Default)]
 pub struct LightingPass;
 
 impl compute::ComputePassSpec for LightingPass {
-    type Marker = utils::Lighting;
-    type Frame = utils::Frame;
+    type Marker = structs::Lighting;
+    type Frame = structs::Frame;
 
-    const SHADER_PATH: &'static str = utils::LIGHTING_SHADER_PATH;
+    const SHADER_PATH: &'static str = structs::LIGHTING_SHADER_PATH;
 
     fn create_layout() -> BindGroupLayoutDescriptor {
         BindGroupLayoutDescriptor::new(

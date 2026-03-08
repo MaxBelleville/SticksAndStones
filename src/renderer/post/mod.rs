@@ -15,7 +15,7 @@ use bevy::{
 pub struct PostPlugin;
 
 use super::compute;
-use super::utils;
+use super::structs;
 
 impl Plugin for PostPlugin {
     fn build(&self, app: &mut App) {
@@ -34,15 +34,15 @@ impl Plugin for PostPlugin {
         render_app
             .add_render_graph_node::<ViewNodeRunner<compute::ComputeNode<PostPass>>>(
                 Core3d,
-                utils::PostLabel,
+                structs::PostLabel,
             )
-            .add_render_graph_edges(Core3d, (utils::LightingLabel, utils::PostLabel));
+            .add_render_graph_edges(Core3d, (structs::LightingLabel, structs::PostLabel));
     }
 }
 fn prepare_bind_group(
     mut commands: Commands,
     pipeline: Res<compute::ComputePipelineRes<PostPass>>,
-    scene: Res<utils::SceneTargets>,
+    scene: Res<structs::SceneTargets>,
     render_device: Res<RenderDevice>,
     pipeline_cache: Res<PipelineCache>,
 ) {
@@ -52,17 +52,17 @@ fn prepare_bind_group(
             &BindGroupEntries::sequential((scene.hdr_view().unwrap(), scene.ldr_view().unwrap())),
         );
         commands
-            .insert_resource(utils::BindersRes::<utils::Post>::new_empty(bind_group));
+            .insert_resource(structs::BindersRes::<structs::Post>::new_empty(bind_group));
     
 }
 #[derive(Default)]
 pub struct PostPass;
 
 impl compute::ComputePassSpec for PostPass {
-    type Marker = utils::Post;
-    type Frame = utils::Frame;
+    type Marker = structs::Post;
+    type Frame = structs::Frame;
 
-    const SHADER_PATH: &'static str = utils::POST_SHADER_PATH;
+    const SHADER_PATH: &'static str = structs::POST_SHADER_PATH;
 
     fn create_layout() -> BindGroupLayoutDescriptor {
         BindGroupLayoutDescriptor::new(

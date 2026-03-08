@@ -1,9 +1,0 @@
-[
-    {
-        "id": "boulder_low_chance",
-        "feature": "boulder_cluster",
-        "min_biome_weight": 0.5,
-        "min_subbiome_strength": 0.3,
-        "spawn_probability": 0.2
-    }
-]

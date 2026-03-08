@@ -1,7 +1,12 @@
 #import "shaders/shared.wgsl"::{
-    view, frame, reconstruct_world_ray, reconstruct_world_position
+    view,env, frame, reconstruct_world_ray, reconstruct_world_position, 
 }
 
+#import "shaders/enviroment.wgsl"::{
+    sky_color, quantize, sun_disk, forward_scattering,
+    horizon_rim, env_height, fog, sun_glow, alpha_moon_disk, alpha_moon_glow,
+    beta_moon_disk, beta_moon_glow,sky_compensation, horizon_scattering, sky_lights
+}
 
 @group(1) @binding(0)
 var depth_tex: texture_2d<f32>;
@@ -19,29 +24,6 @@ var material_tex: texture_2d<f32>;
 var hdr_out_tex: texture_storage_2d<rgba16float, write>;
 
 
-fn sky_color(ray_dir: vec3<f32>) -> vec3<f32> {
-    let up = vec3<f32>(0.0, 1.0, 0.0);
-    let sun_dir = normalize(frame.sun_direction);
-
-    let height = clamp(dot(ray_dir, up), 0.0, 1.0);
-
-    // Gradient
-    let horizon_color = vec3(0.9, 0.6, 0.3);
-    let zenith_color  = vec3(0.1, 0.2, 0.6);
-
-    var sky = mix(horizon_color, zenith_color, pow(height, 0.5));
-
-    // Sun disk
-    let sun_dot = dot(ray_dir, sun_dir);
-    let sun = smoothstep(0.995, 0.999, sun_dot);
-    sky += sun * vec3(1.0, 0.9, 0.7) * 5.0;
-
-    return sky;
-}
-fn quantize(color: vec3<f32>, levels: f32) -> vec3<f32> {
-    return floor(color * levels) / levels;
-}
-
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let slice_index = id.z;
@@ -54,46 +36,63 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     // Fetch G-buffer data
     var albedo_color = textureLoad(albedo_tex, coord, 0);
+    let normal_sample = textureLoad(normal_tex, coord, 0).xyz;
+    let normal = normalize(normal_sample * 2.0 - 1.0);
+
+    var material = textureLoad(material_tex, coord, 0);
+
     let depth = textureLoad(depth_tex, coord, 0).x;
 
     // Reconstruct ray
     let ray = reconstruct_world_ray(coord);
 
-    // --- Stylized Sky ---
-    let up = vec3<f32>(0.0, 1.0, 0.0);
-    let sun_dir = normalize(frame.sun_direction);
-    let height = clamp(dot(ray, up), 0.0, 1.0);
+    let height = env_height(ray);
+    var sky = sky_color(ray, height);
 
-    var sky = vec3<f32>(0.0);
-    
-    // Soft forward scattering toward sun
-    let mu = dot(ray, sun_dir);
-    let forward = pow(max(mu, 0.0), 8.0);
-    sky += forward * vec3(1.0, 0.8, 0.6);
+    sky+= horizon_scattering(ray, height);
 
-    // Warm rim near horizon
-    let horizon = pow(1.0 - height, 3.0);
-    sky += horizon * vec3(0.8, 0.3, 0.2);
+    let compensation = sky_compensation(ray);
+    sky = mix(sky, sky * compensation, 1.0 - height);
 
     // Quantize for retro stylized look
-    //sky = quantize(sky, 48.0);
+    sky = quantize(sky);
 
+
+    
+    let ambient = sky * 0.08;
+
+    let horizon_light = env.dynamic.horizon_color * 0.15;
+    let sky_fill = env.dynamic.zenith_color * 0.05;
+
+    let sky_light = sky_lights(normal);
+    let total = ambient +horizon_light + sky_fill  + sky_light;
+
+    var lit_surface = albedo_color.rgb* total;
+
+ 
     // --- Distance-based fog ---
     if (depth > 0.0) {
         let world_pos = reconstruct_world_position(depth,coord);
         let dist = length(world_pos - view.world_position);
-
-        // Control fog blending (adjust multiplier for stronger/weaker effect)
-        let fog_amount = 1.0 - exp(-dist * 0.005);
+        let fog_amount = fog(world_pos, dist);
 
         // Blend lit surface toward sky based on distance
         // albedo_color will eventually be replaced by fully lit_surface later
-        albedo_color = vec4<f32>(mix(albedo_color.rgb, sky, fog_amount),1.0);
+        lit_surface = mix(lit_surface, sky, fog_amount);
     } else {
+        //Add sun and moons
+        sky+= sun_disk(ray);
+        sky+= sun_glow(ray);
+
+        sky+= alpha_moon_disk(ray);
+        sky+= alpha_moon_glow(ray);
+
+        sky+= beta_moon_disk(ray);
+        sky+= beta_moon_glow(ray);
         // Far plane, fully sky
-        albedo_color = vec4<f32>(sky, 1.0);
+        lit_surface = sky;
     }
 
     // Write final HDR color
-    textureStore(hdr_out_tex, coord, albedo_color);
+    textureStore(hdr_out_tex, coord, vec4<f32>(lit_surface, 1.0));
 }

@@ -55,7 +55,7 @@ bitflags = {workspace = true}
 nonmax =  {workspace = true}
 bytemuck = {workspace = true}
 
-
+sns_loader ={ path = "crates/sns_loader" }
 sns_core = { path = "crates/sns_core" }
 sns_world = { path = "crates/sns_world" }
 sns_macros = { path = "crates/sns_macros" }

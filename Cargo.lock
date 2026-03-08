@@ -5933,6 +5933,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sns_loader"
+version = "0.1.0"
+
+[[package]]
 name = "sns_macros"
 version = "0.1.0"
 dependencies = [
@@ -6178,6 +6182,7 @@ dependencies = [
  "moonshine-core",
  "nonmax",
  "sns_core",
+ "sns_loader",
  "sns_macros",
  "sns_world",
  "spacetimedb-sdk",

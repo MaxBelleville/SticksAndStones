@@ -15,7 +15,7 @@ pub const MARGIN: Val = Val::Px(12.);
 pub enum ManagerState {
     #[default]
     Splash,
-    InMenu,
+    InMainMenu,
     LoadingGame,
     InGame,
 }

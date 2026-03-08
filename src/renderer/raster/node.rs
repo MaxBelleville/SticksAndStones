@@ -15,7 +15,7 @@ use bevy::{
         view::ExtractedView,
     },
 };
-use super::utils;
+use super::structs;
 
 
 #[derive(Default)]
@@ -49,7 +49,7 @@ impl ViewNode for RasterGBufferNode {
         };
 
         // get GBuffer targets (render-world resource)
-        let scene = match world.get_resource::<utils::SceneTargets>() {
+        let scene = match world.get_resource::<structs::SceneTargets>() {
             Some(g) => g,
             None => return Ok(()),
         };

@@ -17,7 +17,7 @@ pub struct RaymarchPlugin;
 
 use super::compute;
 
-use super::utils;
+use super::structs;
 
 impl Plugin for RaymarchPlugin {
     fn build(&self, app: &mut App) {
@@ -36,15 +36,15 @@ impl Plugin for RaymarchPlugin {
         render_app
             .add_render_graph_node::<ViewNodeRunner<compute::ComputeNode<RaymarchPass>>>(
                 Core3d,
-                utils::RaymarchLabel,
+                structs::RaymarchLabel,
             )
-            .add_render_graph_edges(Core3d, (utils::RasterLabel, utils::RaymarchLabel));
+            .add_render_graph_edges(Core3d, (structs::RasterLabel, structs::RaymarchLabel));
     }
 }
 fn prepare_bind_group(
     mut commands: Commands,
     pipeline: Res<compute::ComputePipelineRes<RaymarchPass>>,
-    scene: Res<utils::SceneTargets>,
+    scene: Res<structs::SceneTargets>,
     render_device: Res<RenderDevice>,
     pipeline_cache: Res<PipelineCache>,
 ) {
@@ -60,17 +60,17 @@ fn prepare_bind_group(
             )),
         );
         commands
-            .insert_resource(utils::BindersRes::<utils::Raymarch>::new_empty(bind_group));
+            .insert_resource(structs::BindersRes::<structs::Raymarch>::new_empty(bind_group));
     
 }
 #[derive(Default)]
 pub struct RaymarchPass;
 
 impl compute::ComputePassSpec for RaymarchPass {
-    type Marker = utils::Raymarch;
-    type Frame = utils::Frame;
+    type Marker = structs::Raymarch;
+    type Frame = structs::Frame;
 
-    const SHADER_PATH: &'static str = utils::RAYMARCH_SHADER_PATH;
+    const SHADER_PATH: &'static str = structs::RAYMARCH_SHADER_PATH;
 
     fn create_layout() -> BindGroupLayoutDescriptor {
         BindGroupLayoutDescriptor::new(

@@ -61,7 +61,7 @@ fn countdown(
     mut timer: ResMut<SplashTimer>,
 ) {
     if timer.tick(time.delta()).is_finished() {
-        manager_state.set(ui::ManagerState::InMenu);
+        manager_state.set(ui::ManagerState::InMainMenu);
         menu_state.set(ui::MenuState::Main);
     }
 }

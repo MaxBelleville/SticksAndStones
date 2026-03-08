@@ -12,7 +12,7 @@ use bevy::{
     },
 };
 
-use super::utils;
+use super::structs;
 use crate::window::WindowSettings;
 
 pub trait ComputePassSpec: Send + Sync + 'static {
@@ -47,7 +47,7 @@ impl<P: ComputePassSpec> ComputePipelineRes<P> {
 
 pub fn init_pipeline<P: ComputePassSpec>(
     mut commands: Commands,
-    frame_layout: Res<utils::FrameBindLayout>,
+    frame_layout: Res<structs::FrameBindLayout>,
     asset_server: Res<AssetServer>,
     pipeline_cache: Res<PipelineCache>,
 ) {
@@ -103,8 +103,8 @@ impl<P: ComputePassSpec> ViewNode for ComputeNode<P> {
         
         pass.set_pipeline(pipeline_obj);
         
-        let frame_binders = world.resource::<utils::BindersRes<P::Frame>>();
-        let pass_binders = world.resource::<utils::BindersRes<P::Marker>>();
+        let frame_binders = world.resource::<structs::BindersRes<P::Frame>>();
+        let pass_binders = world.resource::<structs::BindersRes<P::Marker>>();
 
         for (index,frame) in frame_binders.get_binders().iter().enumerate() {
             pass.set_bind_group(index as u32, frame.get_group(), frame.get_offsets());
@@ -115,7 +115,7 @@ impl<P: ComputePassSpec> ViewNode for ComputeNode<P> {
             pass.set_bind_group((offset + index) as u32, binder.get_group(), binder.get_offsets());
         }
 
-        let size = utils::dispatch_size(settings.dim);
+        let size = super::dispatch_size(settings.dim);
         pass.dispatch_workgroups(size.x, size.y, size.z);
 
         Ok(())

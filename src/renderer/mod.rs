@@ -7,7 +7,7 @@ use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 use bevy::render::render_resource::binding_types::uniform_buffer;
 use bevy::render::render_resource::{
     BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries, PipelineCache,
-    ShaderStages,
+    ShaderStages, TextureDescriptor, TextureDimension,
 };
 use bevy::render::renderer::RenderQueue;
 use bevy::render::view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms};
@@ -33,11 +33,13 @@ mod lighting;
 mod post;
 mod raster;
 mod raymarch;
-mod utils;
+mod structs;
+mod enviroment;
 
 use crate::window::WindowSettings;
 pub struct RendererPlugins;
-pub use utils::RasterMaterial;
+pub use structs::RasterMaterial;
+pub use enviroment::{EnvironmentUniform,EnviromentPreset,EnviromentInterpolated};
 
 impl PluginGroup for RendererPlugins {
     fn build(self) -> PluginGroupBuilder {
@@ -61,6 +63,7 @@ impl Plugin for RendererPlugin {
         app.add_plugins((
             ExtractComponentPlugin::<WorldModelCamera>::default(),
             ExtractResourcePlugin::<WindowSettings>::default(),
+            ExtractResourcePlugin::<enviroment::EnvironmentUniform>::default(),
             SortedRenderPhasePlugin::<raster::RasterGBuffer3D, MeshPipeline>::new(
                 RenderDebugFlags::default(),
             ),
@@ -70,7 +73,7 @@ impl Plugin for RendererPlugin {
             return;
         };
         render_app
-            .init_resource::<utils::SceneTargets>()
+            .init_resource::<structs::SceneTargets>()
             .add_systems(RenderStartup, prepare_shared_layout)
             .add_systems(
                 Render,
@@ -87,7 +90,7 @@ fn prepare_scene_targets(
     settings: Res<WindowSettings>,
     mut tex_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
-    mut targets: ResMut<utils::SceneTargets>,
+    mut targets: ResMut<structs::SceneTargets>,
 ) {
     let size = Extent3d {
         width: settings.dim.z.round() as u32,
@@ -95,19 +98,16 @@ fn prepare_scene_targets(
         depth_or_array_layers: 1,
     };
 
-    let ldr_desc = utils::create_tex_storage_desc("LDRTexture", TextureFormat::Rgba8Unorm, size);
+    let ldr_desc = create_tex_storage_desc("LDRTexture", TextureFormat::Rgba8Unorm, size);
 
-    let hdr_desc = utils::create_tex_storage_desc("HdrTexture", TextureFormat::Rgba16Float, size);
+    let hdr_desc = create_tex_storage_desc("HdrTexture", TextureFormat::Rgba16Float, size);
 
-    let albedo_desc =
-        utils::create_tex_storage_desc("AlbedoTexture", TextureFormat::Rgba8Unorm, size);
+    let albedo_desc = create_tex_storage_desc("AlbedoTexture", TextureFormat::Rgba8Unorm, size);
 
-    let normal_desc =
-        utils::create_tex_storage_desc("NormalTexture", TextureFormat::Rgba16Float, size);
-    let material_desc =
-        utils::create_tex_storage_desc("MaterialTexture", TextureFormat::Rgba8Unorm, size);
+    let normal_desc = create_tex_storage_desc("NormalTexture", TextureFormat::Rgba16Float, size);
+    let material_desc = create_tex_storage_desc("MaterialTexture", TextureFormat::Rgba8Unorm, size);
 
-    let raster_depth_desc = utils::create_tex_desc(
+    let raster_depth_desc = create_tex_desc(
         "RasterDepthTexture",
         TextureFormat::Depth32Float,
         TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
@@ -115,7 +115,7 @@ fn prepare_scene_targets(
     );
 
     let combined_depth_desc =
-        utils::create_tex_storage_desc("CombinedDepthTexture", TextureFormat::R32Float, size);
+        create_tex_storage_desc("CombinedDepthTexture", TextureFormat::R32Float, size);
 
     // Grab textures from cache (reused or freshly allocated)
     targets.set_hdr(tex_cache.get(&render_device, hdr_desc));
@@ -135,25 +135,24 @@ pub fn prepare_shared_layout(mut commands: Commands) {
             ShaderStages::COMPUTE,
             (
                 uniform_buffer::<ViewUniform>(true),
-                uniform_buffer::<utils::FrameUniform>(false),
+                uniform_buffer::<structs::FrameUniform>(false),
+                uniform_buffer::<enviroment::EnvironmentUniform>(false),
             ),
         ),
     );
-    commands.insert_resource(utils::FrameBindLayout::new(bind_layout));
+    commands.insert_resource(structs::FrameBindLayout::new(bind_layout));
 }
 
 pub fn prepare_shared_group(
     mut commands: Commands,
     render_device: Res<RenderDevice>,
     pipeline_cache: Res<PipelineCache>,
-    frame_layout: Res<utils::FrameBindLayout>,
+    frame_layout: Res<structs::FrameBindLayout>,
     view_uniforms: Res<ViewUniforms>,
     queue: Res<RenderQueue>,
     settings: Res<WindowSettings>,
-    views: Query<
-        (Entity, &ViewUniformOffset),
-        (With<ExtractedView>, With<WorldModelCamera>),
-    >,
+    enviroment: Res<enviroment::EnvironmentUniform>,
+    views: Query<(Entity, &ViewUniformOffset), (With<ExtractedView>, With<WorldModelCamera>)>,
 ) {
     let Some(view_binding) = view_uniforms.uniforms.binding() else {
         return;
@@ -162,36 +161,87 @@ pub fn prepare_shared_group(
         return;
     };
 
-    let mut frame_buffer = UniformBuffer::from(utils::FrameUniform {
+    let mut frame_buffer = UniformBuffer::from(structs::FrameUniform {
         res: vec2(settings.dim.z, settings.dim.w),
-        frame_index: 0,//might nto always be true
+        frame_index: 0, //might nto always be true
     });
 
     frame_buffer.write_buffer(&render_device, &queue);
 
+    let mut env_buffer = UniformBuffer::from(enviroment.into_inner());
+    env_buffer.write_buffer(&render_device, &queue);
+
     let bind_group = render_device.create_bind_group(
         None,
         &pipeline_cache.get_bind_group_layout(&frame_layout.get_layout()),
-        &BindGroupEntries::sequential((view_binding.clone(), frame_buffer.binding().unwrap())),
+        &BindGroupEntries::sequential((
+            view_binding.clone(),
+            frame_buffer.binding().unwrap(),
+            env_buffer.binding().unwrap(),
+        )),
     );
-    
-    commands.insert_resource(utils::BindersRes::<utils::Frame>::new( bind_group, vec![view_offset.offset]));
+
+    commands.insert_resource(structs::BindersRes::<structs::Frame>::new(
+        bind_group,
+        vec![view_offset.offset],
+    ));
 }
 
-#[derive(Component, Debug, ExtractComponent,Clone)]
+pub fn create_tex_desc<'w>(
+    label: &'w str,
+    format: TextureFormat,
+    usage: TextureUsages,
+    size: Extent3d,
+) -> TextureDescriptor<'w> {
+    TextureDescriptor {
+        label: Some(label),
+        size,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format,
+        usage,
+        view_formats: &[],
+        mip_level_count: 1,
+    }
+}
+
+pub fn create_tex_storage_desc<'w>(
+    label: &'w str,
+    format: TextureFormat,
+    size: Extent3d,
+) -> TextureDescriptor<'w> {
+    TextureDescriptor {
+        label: Some(label),
+        size,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format,
+        usage: TextureUsages::RENDER_ATTACHMENT
+            | TextureUsages::STORAGE_BINDING
+            | TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+        mip_level_count: 1,
+    }
+}
+pub fn dispatch_size(dim: Vec4) -> UVec3 {
+    uvec3(
+        (dim.z.round() as u32 + 7) / 8,
+        (dim.w.round() as u32 + 7) / 8,
+        1,
+    )
+}
+
+#[derive(Component, Debug, ExtractComponent, Clone)]
 #[require(Transform, Visibility)]
 pub struct WorldModelCamera;
 
-#[derive(Component, Debug, ExtractComponent,Clone)]
+#[derive(Component, Debug, ExtractComponent, Clone)]
 #[require(Transform, Visibility)]
 pub struct ViewModelCamera;
 
-#[derive(Component, Debug, ExtractComponent,Clone)]
+#[derive(Component, Debug, ExtractComponent, Clone)]
 #[require(Transform, Visibility)]
 pub struct UIModelCamera;
-
-
-
 
 pub enum CameraOrder {
     World,

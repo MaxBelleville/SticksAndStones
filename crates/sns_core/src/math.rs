@@ -89,9 +89,14 @@ pub fn hash_vec2(coord: IVec2, seed: i32) -> Vec2 {
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + t * (b - a)
 }
+
 #[inline]
 pub fn smoothstep(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
+}
+#[inline]
+pub fn dir_from_angle(angle: f32) -> Vec3 {
+    Vec3::new(angle.cos(), angle.sin(), 0.0)
 }
 
 #[inline]

@@ -1,11 +1,15 @@
+use std::marker::PhantomData;
+
 use bevy::{
-    prelude::*,
-    render::{
-        render_graph::RenderLabel, render_resource::{AsBindGroup, BindGroup, BindGroupLayoutDescriptor, Extent3d, ShaderType, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView}, texture::CachedTexture
-    },
-    shader::ShaderRef,
+    prelude::*, render::{
+        render_graph::RenderLabel, render_resource::{
+            AsBindGroup, BindGroup, BindGroupLayoutDescriptor, ShaderType,
+            TextureView,
+        }, texture::CachedTexture
+    }
 };
 use bytemuck::{Pod, Zeroable};
+
 
 pub const RASTER_SHADER_PATH: &str = "shaders/raster.wgsl";
 pub const RAYMARCH_SHADER_PATH: &str = "shaders/raymarch.wgsl";
@@ -29,7 +33,7 @@ impl GBufferTargets {
         };
         Some(&albedo.default_view)
     }
-    pub fn normal_view(&self) -> Option<&TextureView> { 
+    pub fn normal_view(&self) -> Option<&TextureView> {
         let Some(normal) = &self.normal else {
             return None;
         };
@@ -68,14 +72,13 @@ impl GBufferTargets {
     pub fn set_combined_depth(&mut self, combined_depth: CachedTexture) {
         self.combined_depth = Some(combined_depth);
     }
-
 }
 
-#[derive(Resource,Default)]
+#[derive(Resource, Default)]
 pub struct SceneTargets {
-   gbuffer: GBufferTargets,
-   hdr: Option<CachedTexture>,
-   ldr: Option<CachedTexture>
+    gbuffer: GBufferTargets,
+    hdr: Option<CachedTexture>,
+    ldr: Option<CachedTexture>,
 }
 
 impl SceneTargets {
@@ -127,10 +130,7 @@ impl SceneTargets {
     pub fn combined_depth_view(&self) -> Option<&TextureView> {
         self.gbuffer.combined_depth_view()
     }
- 
 }
-
-
 
 #[derive(ShaderType, Clone, Debug)]
 pub struct RasterMaterialUniform {
@@ -155,9 +155,7 @@ pub struct RasterMaterial {
     #[uniform(6)]
     pub material_uniform: RasterMaterialUniform,
 }
-impl Material for RasterMaterial {
-  
-}
+impl Material for RasterMaterial {}
 
 #[repr(C)]
 #[derive(ShaderType, Clone, Copy, Pod, Zeroable)]
@@ -185,7 +183,7 @@ pub struct Binder {
 }
 impl Binder {
     pub fn new(group: BindGroup, offsets: Vec<u32>) -> Self {
-        Self { group, offsets}
+        Self { group, offsets }
     }
     pub fn get_group(&self) -> &BindGroup {
         &self.group
@@ -198,12 +196,11 @@ impl Binder {
 #[derive(Resource, Default)]
 pub struct BindersRes<T> {
     binders: Vec<Binder>,
-    _marker: std::marker::PhantomData<T>,
+    _marker: PhantomData<T>,
 }
 
-
 impl<T> BindersRes<T> {
-   pub fn new(group: BindGroup, offsets: Vec<u32>) -> Self {
+    pub fn new(group: BindGroup, offsets: Vec<u32>) -> Self {
         Self {
             binders: vec![Binder::new(group, offsets)],
             _marker: std::marker::PhantomData,
@@ -216,13 +213,11 @@ impl<T> BindersRes<T> {
         }
     }
 
-   pub fn add_binder(&mut self, group: BindGroup, offsets: Vec<u32>) {
+    pub fn add_binder(&mut self, group: BindGroup, offsets: Vec<u32>) {
         self.binders.push(Binder::new(group, offsets));
-   
     }
-    pub fn add_binder_empty(&mut self, group: BindGroup)  {
+    pub fn add_binder_empty(&mut self, group: BindGroup) {
         self.binders.push(Binder::new(group, vec![]));
-     
     }
     pub fn get_binders(&self) -> &[Binder] {
         &self.binders
@@ -240,7 +235,6 @@ impl<T> BindersRes<T> {
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PostLabel;
-
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct RaymarchLabel;
@@ -260,40 +254,3 @@ pub struct Lighting;
 pub struct Post;
 
 pub struct Blit;
-
-
-pub fn dispatch_size(dim: Vec4) -> UVec3 {
-    uvec3(
-        (dim.z.round() as u32 + 7) / 8,
-        (dim.w.round() as u32 + 7) / 8,
-        1,
-    )
-}
-
-pub fn create_tex_desc<'w>(label: &'w str, format: TextureFormat, usage: TextureUsages, size:Extent3d)->TextureDescriptor<'w> {
-    TextureDescriptor {
-        label: Some(label),
-        size,
-        sample_count: 1,
-        dimension: TextureDimension::D2,
-        format,
-        usage,
-        view_formats: &[],
-        mip_level_count: 1,
-    }
-}
-
-pub fn create_tex_storage_desc<'w>(label: &'w str, format: TextureFormat, size:Extent3d)->TextureDescriptor<'w> {
-    TextureDescriptor {
-        label: Some(label),
-        size,
-        sample_count: 1,
-        dimension: TextureDimension::D2,
-        format,
-        usage: TextureUsages::RENDER_ATTACHMENT
-            | TextureUsages::STORAGE_BINDING
-            | TextureUsages::TEXTURE_BINDING,
-        view_formats: &[],
-        mip_level_count: 1,
-    }
-}

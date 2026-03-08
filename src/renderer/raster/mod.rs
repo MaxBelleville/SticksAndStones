@@ -23,7 +23,7 @@ mod pipe;
 mod phase;
 mod node;
 
-use super::utils;
+use super::structs;
 use super::WorldModelCamera;
 
 pub use phase::RasterGBuffer3D;
@@ -58,9 +58,9 @@ impl Plugin for RasterPlugin {
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<node::RasterGBufferNode>>(Core3d, utils::RasterLabel)
+            .add_render_graph_node::<ViewNodeRunner<node::RasterGBufferNode>>(Core3d, structs::RasterLabel)
             // Tell the node to run after the main pass
-            .add_render_graph_edges(Core3d, (Node3d::MainOpaquePass, utils::RasterLabel));
+            .add_render_graph_edges(Core3d, (Node3d::MainOpaquePass, structs::RasterLabel));
 
     }
     
@@ -99,9 +99,9 @@ fn init_mesh_pipeline(
     render_device: Res<RenderDevice>,
 ) {
     // Load the shader
-    let shader_handle: Handle<Shader> = asset_server.load(utils::RASTER_SHADER_PATH);
+    let shader_handle: Handle<Shader> = asset_server.load(structs::RASTER_SHADER_PATH);
 
-    let material_layout =utils::RasterMaterial::bind_group_layout_descriptor(&render_device);
+    let material_layout =structs::RasterMaterial::bind_group_layout_descriptor(&render_device);
 
     commands.insert_resource(pipe::GBufferMeshPipeline::new(
         mesh_pipeline.clone(),

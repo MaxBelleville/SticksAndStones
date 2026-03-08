@@ -1,0 +1,18 @@
+{
+    "version": 1,
+    "libraries": [
+        "region",
+        "biomes",
+        "region",
+        "noise",
+        "terrain_profiles",
+        "feature_rules"
+    ],
+    "settings": {
+        "climate_sample_cell_res": 6,
+        "climate_sample_cell_size": 512,
+        "local_sample_cell_res": 128,
+        "local_sample_cell_size": 3,
+        "region_size": 1024
+    }
+}

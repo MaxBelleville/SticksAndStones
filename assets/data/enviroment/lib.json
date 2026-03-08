@@ -1,0 +1,13 @@
+{
+    "version": 1,
+    "namespace": "enviroment",
+    "assets": [
+        {
+            "type": "preset",
+            "schema": "preset.schema.json",
+            "files": "preset.json"
+        }
+    ],
+    "registry": "enviroment",
+    "settings": {}
+}
