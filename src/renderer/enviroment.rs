@@ -88,14 +88,12 @@ impl From<EnviromentPreset> for EnviromentInterpolated {
     }
 }  
 impl EnviromentInterpolated {
-    pub fn set_sun(&mut self, abs_t: f32, intensity: f32) {
-        let angle = abs_t * TAU;
+    pub fn set_sun(&mut self, angle: f32, intensity: f32) {
         let sun_dir = dir_from_angle(angle);
         self.sun_intensity = intensity;
         self.sun_direction = sun_dir;
     }
-    pub fn set_moons(&mut self, abs_t: f32, intensity: f32) {
-        let angle = abs_t * TAU + PI;
+    pub fn set_moons(&mut self, angle: f32, intensity: f32) {
         let mut alpha_moon_dir = dir_from_angle(angle);
         let mut beta_moon_dir = dir_from_angle(angle);
 

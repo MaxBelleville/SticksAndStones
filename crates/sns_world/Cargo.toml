@@ -8,8 +8,7 @@ num-traits = "0.2.19"
 bytemuck = {workspace = true}
 bevy_math = {workspace = true}
 smallvec = {workspace = true}
-lru = {workspace = true}
-
+lru = "0.16.3"
 
 sns_core = {path = "../sns_core"}
 sns_macros = {path = "../sns_macros"}

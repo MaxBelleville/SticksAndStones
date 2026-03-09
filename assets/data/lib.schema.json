@@ -1,0 +1,71 @@
+{
+    "type": "object",
+    "title": "Library",
+    "description": "Used for discovery phase of data loader",
+    "properties": {
+        "version": {
+            "type": "number"
+        },
+        "libraries": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "minItems": 1
+        },
+        "assets": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "format": "namespaced"
+                    },
+                    "schema": {
+                        "type": "string"
+                    },
+                    "files": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "minItems": 1
+                    },
+                    "folders": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "minItems": 1
+                    }
+                }
+            },
+            "required": [
+                "type",
+                "schema"
+            ],
+            "anyOf": [
+                {
+                    "required": [
+                        "files"
+                    ]
+                },
+                {
+                    "required": [
+                        "folders"
+                    ]
+                }
+            ]
+        },
+        "registry": {
+            "type": "string"
+        },
+        "settings": {
+            "type": "object"
+        }
+    },
+    "required": [
+        "version"
+    ]
+}

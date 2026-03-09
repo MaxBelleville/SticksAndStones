@@ -58,12 +58,14 @@ fn update_time(
     if time_mgr.time_of_day > 1.0 {
         time_mgr.time_of_day -= 1.0;
         time_mgr.day_count += 1;
-        if time_mgr.day_count % 192 == 0 {
-            time_mgr.year_count += 1;
-        }
         if time_mgr.day_count % 48 == 0 {
            time_mgr.season.change_season();
         }
+        if time_mgr.day_count % 192 == 0 {
+            time_mgr.year_count += 1;
+            time_mgr.day_count = 0;
+        }
+      
     }
 }
 
@@ -98,10 +100,13 @@ impl TimeManager {
     pub fn get_season(&self) -> &Season {
         &self.season
     }
-    pub fn get_time(&self) -> f32 {
+    pub fn get_time_of_day(&self) -> f32 {
         self.time_of_day
     }
-     pub fn get_absolute_time(&self) -> f32 {
+    pub fn get_time(&self) -> f32 {
         self.time_of_day + self.day_count as f32
+    }
+    pub fn get_absolute_time(&self) -> f32 {
+        self.time_of_day + self.day_count as f32 + self.year_count as f32
     }
 }

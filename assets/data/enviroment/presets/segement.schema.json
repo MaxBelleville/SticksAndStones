@@ -1,0 +1,29 @@
+{
+    "type": "object",
+    "title": "Enviroment Preset Segement",
+    "description": "A transition from one preset to another based on a curve",
+    "properties": {
+        "id": {
+            "type": "string",
+            "format": "namespaced"
+        },
+        "curve_id": {
+            "asset_ref": "enviroment:curve"
+        },
+        "start_id": {
+            "asset_ref": "enviroment:preset"
+        },
+        "end_id": {
+            "asset_ref": "enviroment:preset"
+        },
+        "is_first": {
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "id",
+        "curve_id",
+        "start_id",
+        "end_id"
+    ]
+}

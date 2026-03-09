@@ -176,6 +176,7 @@ fn on_click(
         "Continue" => {
             if let Some(_game) = game_state {
                 next_game.unwrap().set(ui::GameState::Normal);
+                next_menu.set(ui::MenuState::Disabled);
             } else {
                 next_manager.set(ui::ManagerState::LoadingGame);
                 next_load.set(LoadState::ServerStarting);

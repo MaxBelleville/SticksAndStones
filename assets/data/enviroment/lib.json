@@ -1,13 +1,24 @@
 {
     "version": 1,
-    "namespace": "enviroment",
     "assets": [
         {
-            "type": "preset",
-            "schema": "preset.schema.json",
-            "files": "preset.json"
+            "type": "enviroment:preset",
+            "schema": "presets/preset.schema.json",
+            "files": ["presets/preset.json"]
+        },
+        {
+            "type": "enviroment:preset_segement",
+            "schema": "presets/segement.schema.json",
+            "files": ["presets/segement.json"]
+        },
+        {
+            "type": "enviroment:curve",
+            "schema": "curve.schema.json",
+            "files": ["curve.json"]
         }
     ],
     "registry": "enviroment",
-    "settings": {}
+    "settings": {
+
+    }
 }
