@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use sns_macros::register_assets;
-use super::{enviroment, world_gen, DefinedAsset, AssetRef};
+use crate::baseplates;
+
+use super::{enviroment, worldshared, DefinedAsset, AssetRef};
 
 
 pub struct RegistrySystem {
@@ -31,15 +33,15 @@ register_assets!(
     enviroment::Curves,
     enviroment::Preset,
     enviroment::PresetSegement,
-    world_gen::NoiseField,
-    world_gen::BaseRule,
-    world_gen::TerrainProfile,
-    world_gen::DensityCurve,
-    world_gen::ClimateField,
-    world_gen::NoiseBasis,
-    world_gen::RegionArchetype,
-    world_gen::Biome,
-    world_gen::SubBiome
+    worldshared::NoiseField,
+    worldshared::BaseRule,
+    worldshared::TerrainProfile,
+    worldshared::DensityCurve,
+    worldshared::ClimateField,
+    baseplates::NoiseBasis,
+    baseplates::RegionArchetype,
+    baseplates::Biome,
+    baseplates::SubBiome
 );
 
 #[derive(Default, Debug)]

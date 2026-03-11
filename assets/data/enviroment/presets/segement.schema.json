@@ -8,13 +8,13 @@
             "format": "namespaced"
         },
         "curve_id": {
-            "asset_ref": "enviroment:curve"
+            "asset_ref": "enviroment:Curve"
         },
         "start_id": {
-            "asset_ref": "enviroment:preset"
+            "asset_ref": "enviroment:Preset"
         },
         "end_id": {
-            "asset_ref": "enviroment:preset"
+            "asset_ref": "enviroment:Preset"
         },
         "is_first": {
             "type": "boolean"

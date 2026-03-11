@@ -1,0 +1,22 @@
+{
+    "type": "object",
+    "title": "Noise Basis",
+    "description": "A container of noise and climate data",
+    "properties": {
+        "id": {
+            "type": "string",
+            "format": "namespaced"
+        },
+        "noise_id": {
+            "asset_ref": "worldshared:NoiseField"
+        },
+        "weight_id": {
+            "asset_ref": "worldshared:ClimateField"
+        }
+    },
+    "required": [
+        "id",
+        "noise_id",
+        "weight_id"
+    ]
+}

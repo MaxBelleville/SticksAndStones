@@ -1,0 +1,30 @@
+{
+    "type": "object",
+    "title": "Climate Field",
+    "description": "Climate data for a specific part of the baseplate",
+    "properties": {
+        "id": {
+            "type": "string",
+            "format": "namespaced"
+        },
+        "temperature": {
+            "type": "number"
+        },
+        "moisture": {
+            "type": "number"
+        },
+        "continentalness": {
+            "type": "number"
+        },
+        "ruggedness": {
+            "type": "number"
+        }
+    },
+    "required": [
+        "id",
+        "temperature",
+        "moisture",
+        "continentalness",
+        "ruggedness"
+    ]
+}

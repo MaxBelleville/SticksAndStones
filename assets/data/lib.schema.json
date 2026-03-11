@@ -61,8 +61,5 @@
         "settings": {
             "type": "object"
         }
-    },
-    "required": [
-        "version"
-    ]
+    }
 }

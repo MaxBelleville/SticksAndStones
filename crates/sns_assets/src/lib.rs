@@ -4,13 +4,17 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer};
 
 mod enviroment;
-mod world_gen;
+mod worldshared;
 mod registry;
+mod baseplates;
 mod schema;
 
 pub mod prelude {
     pub use crate::enviroment::*;
-    pub use crate::world_gen::*;
+    pub use crate::worldshared::*;
+    pub use crate::baseplates::*;
+    pub use crate::registry::*;
+    pub use crate::schema::*;
 }
 pub trait DefinedAsset: Sized + 'static {
     type ID;

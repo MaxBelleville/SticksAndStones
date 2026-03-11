@@ -1,0 +1,31 @@
+{
+      "assets": [
+        {
+            "type": "baseplates:NoiseBasis",
+            "schema": "noise_basis.schema.json",
+            "files": ["noise_basis.json"]
+        },
+        {
+            "type": "baseplates:RegionArchetype",
+            "schema": "region.schema.json",
+            "files": ["region.json"]
+        },
+        {
+            "type": "baseplates:Biome",
+            "schema": "biomes/biome.schema.json",
+            "files": ["biomes/biome.json"]
+        },
+        {
+            "type": "baseplates:SubBiome",
+            "schema": "biomes/subbiome.schema.json",
+            "files": ["biomes/subbiome.json"]
+        }
+    ],
+    "settings": {
+        "climate_sample_cell_res": 6,
+        "climate_sample_cell_size": 512,
+        "local_sample_cell_res": 128,
+        "local_sample_cell_size": 3,
+        "region_size": 1024
+    }
+}

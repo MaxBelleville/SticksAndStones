@@ -1,0 +1,28 @@
+{
+    "type": "object",
+    "title": "Region Archetype",
+    "description": "Static region data the vornoi region graph will use",
+    "properties": {
+        "id": {
+            "type": "string",
+            "format": "namespaced"
+        },
+        "bias_id": {
+            "asset_ref": "worldshared:ClimateField"
+        },
+        "max_delta_id": {
+            "asset_ref": "worldshared:ClimateField"
+        },
+        "base_rules_ids": {
+            "type": "array",
+            "items": {
+                "asset_ref": "worldshared:BaseRule"
+            },
+            "minItems": 1
+        }
+    },
+    "required": [
+        "id",
+        "bias_id"
+    ]
+}

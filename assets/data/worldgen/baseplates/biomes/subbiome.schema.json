@@ -1,0 +1,28 @@
+{
+    "type": "object",
+    "title": "Subbiomes",
+    "description": "From the current biome using a noise mask, get more detailed",
+    "properties": {
+        "id": {
+            "type": "string",
+            "format": "namespaced"
+        },
+        "parent_id": {"asset_ref":"baseplates:biome"},
+        "threshold": {"type":"number"},
+        "weight": {"type":"number"},
+        "terrain_profile_id": {"asset_ref":"worldshared:TerrainProfile"},
+        "base_rules_ids": {
+            "type": "array",
+            "items": {
+                "asset_ref": "worldshared:BaseRule"
+            },
+            "minItems": 1
+        }
+
+    },
+    "required": [
+        "id",
+        "threshold",
+        "weight"
+    ]
+}

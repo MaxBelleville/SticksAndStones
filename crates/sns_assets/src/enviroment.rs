@@ -24,4 +24,5 @@ pub struct PresetSegement {
     start_id: PresetID,
     #[asset_ref(Preset)]
     end_id: PresetID,
+    is_first: bool
 }

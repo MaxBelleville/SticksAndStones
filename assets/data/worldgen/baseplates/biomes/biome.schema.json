@@ -1,0 +1,56 @@
+{
+    "type": "object",
+    "title": "Biome",
+    "description": "Data that gets interpolated to get actual world biomes",
+    "properties": {
+        "id": {
+            "type": "string",
+            "format": "namespaced"
+        },
+        "center": {
+            "$ref": "#/defs/partial"
+        },
+        "width": {
+            "$ref": "#/defs/partial"
+        },
+        "sub_ids": {
+            "type": "array",
+            "items": {
+                "asset_ref": "worldshared:BaseRule"
+            },
+            "minItems": 1
+        },
+        "terrain_profile_id": {"asset_ref":"worldshared:TerrainProfile"},
+          "base_rules_ids": {
+            "type": "array",
+            "items": {
+                "asset_ref": "worldshared:BaseRule"
+            },
+            "minItems": 1
+        }
+
+    },
+    "required": [
+        "id",
+        "center",
+        "width",
+        "terrain_profile_id"
+    ],
+    "defs": {
+        "partial": {
+            "type": "object",
+            "properties": {
+                "temperature": {
+                    "type": "number"
+                },
+                "moisture": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "temperature",
+                "moisture"
+            ]
+        }
+    }
+}
