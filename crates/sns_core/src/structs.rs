@@ -1,54 +1,24 @@
 use bevy_math::*;
 use bytemuck::NoUninit;
 use simdnoise::NoiseBuilder;
-use std::collections::HashMap;
-use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem::size_of;
 
-#[derive(Default)]
-pub struct NoiseFields<T: Eq + Hash> {
-    noise_fields: HashMap<T, NoiseField>,
-}
-impl<T: Eq + Hash> NoiseFields<T> {
-    pub fn get(&self, key: T) -> Option<&NoiseField> {
-        self.noise_fields.get(&key)
-    }
-}
 
-#[derive(Default)]
-pub struct NoiseField {
-    frequency: f32,
-    octaves: u8,
-    gain: f32,
-    lacunarity: f32,
-    mult: f32,
-}
 
-impl NoiseField {
-    pub fn new(frequency: f32, octaves: u8, gain: f32, lacunarity: f32) -> Self {
-        Self {
-            frequency,
-            octaves,
-            gain,
-            lacunarity,
-            mult: 1.0,
-        }
-    }
-}
 
-impl NoiseField {
-    pub fn sample_fbm_2d(&self, coord: Vec2, seed: i32) -> f32 {
-        let val = NoiseBuilder::fbm_2d_offset(coord.x, 1, coord.y, 1)
-            .with_seed(seed)
-            .with_freq(self.frequency)
-            .with_octaves(self.octaves)
-            .with_gain(self.gain)
-            .with_lacunarity(self.lacunarity)
-            .generate_scaled(0.0, 1.0);
-        val[0] * self.mult
-    }
-}
+// impl NoiseField {
+//     pub fn sample_fbm_2d(&self, coord: Vec2, seed: i32) -> f32 {
+//         let val = NoiseBuilder::fbm_2d_offset(coord.x, 1, coord.y, 1)
+//             .with_seed(seed)
+//             .with_freq(self.frequency)
+//             .with_octaves(self.octaves)
+//             .with_gain(self.gain)
+//             .with_lacunarity(self.lacunarity)
+//             .generate_scaled(0.0, 1.0);
+//         val[0] * self.mult
+//     }
+// }
 
 pub struct LinearAllocator<T> {
     storage: Vec<T>,
@@ -245,9 +215,4 @@ where
     pub fn end(&self) -> T {
         self.end.clone()
     }
-}
-
-pub struct IdVolume<T> {
-    map: HashMap<String, T>,
-    reverse: Vec<String>,
 }

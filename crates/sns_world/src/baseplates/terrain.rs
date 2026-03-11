@@ -1,11 +1,8 @@
 use crate::BIOME_BASE_WEIGHT;
 use crate::SUBBIOME_BASE_WEIGHT;
 use crate::prelude::{ClimateSample, LocalPlateSample};
-use crate::structs::DensityCurveId;
-use crate::structs::NoiseId;
-use crate::structs::TerrainProfileId;
+
 use bevy_math::*;
-use sns_core::prelude::NoiseFields;
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -62,16 +59,6 @@ impl Plate {
     }
 }
 
-
-#[derive(Default)]
-pub struct TerrainProfile {
-    base_noise: NoiseId,
-    height_offset: f32,   // mean elevation contribution
-    height_variance: f32, // amplitude of deviation
-    roughness: f32,
-    erosion_strength: f32,
-    density_curve_id: Option<DensityCurveId>,
-}
 impl TerrainProfile {
     pub fn apply(
         &self,

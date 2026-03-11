@@ -2,7 +2,7 @@ use core::f32;
 use std::collections::HashMap;
 
 use sns_core::prelude::*;
-use crate::{prelude::ClimateField, structs::{BaseRuleId, RegionArchetypeId}};
+
 use bevy_math::*;
 
 pub type Coord = IVec2;
@@ -82,24 +82,6 @@ impl Plate {
         )
     }
 
-}
-
-#[derive(Default)]
-pub struct Archetype {
-    bias: ClimateField,
-    max_climate_delta: Option<ClimateField>,
-    base_rules: Vec<BaseRuleId>,
-}
-impl Archetype {
-   pub fn get_bias(&self) -> ClimateField {
-        self.bias
-    }
-    pub fn get_base_rules(&self) -> &Vec<BaseRuleId> {
-        &self.base_rules
-    }
-    pub fn get_max_climate_delta(&self) -> Option<ClimateField> {
-        self.max_climate_delta
-    }
 }
 
 #[derive(Default)]

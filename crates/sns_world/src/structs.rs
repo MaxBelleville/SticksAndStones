@@ -1,62 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy_math::*;
-use sns_core::prelude::*;
-use sns_macros::*;
 
 use crate::prelude::biome;
 
-#[derive(Default, Copy, Clone, FieldMath)]
-
-pub struct ClimateField {
-    temperature: f32,
-    moisture: f32,
-    continentalness: f32,
-    ruggedness: f32,
-}
-impl std::ops::Mul<f32> for ClimateField {
-    type Output = Self;
-
-    fn mul(self, rhs: f32) -> Self {
-        Self {
-            temperature: self.temperature * rhs,
-            moisture: self.moisture * rhs,
-            continentalness: self.continentalness * rhs,
-            ruggedness: self.ruggedness * rhs,
-        }
-    }
-}
-impl ClimateField {
-    pub fn abs_rugedness(&mut self) {
-        self.ruggedness = self.ruggedness.abs();
-    }
-    pub fn to_partial(&self) -> PartialClimateField {
-        PartialClimateField {
-            temperature: self.temperature,
-            moisture: self.moisture,
-        }
-    }
-}
-
-#[derive(Default, Copy, Clone, FieldMath)]
-
-pub struct PartialClimateField {
-    temperature: f32,
-    moisture: f32,
-}
-#[derive(Default)]
-pub struct NoiseBasis {
-    noise_id: NoiseId,
-    weight: ClimateField,
-}
-impl NoiseBasis {
-    pub fn get_noise_id(&self) -> NoiseId {
-        self.noise_id
-    }
-    pub fn get_weight(&self) -> ClimateField {
-        self.weight
-    }
-}
 #[derive(Default)]
 pub struct NoiseBasisPlate {
     climate: NoiseBasis,
@@ -127,31 +74,6 @@ impl BaseRules {
     }
 }
 
-#[derive(Default)]
-pub struct BaseRule {
-    min_weight: f32,
-    is_feature: bool,
-    scope: String,       //regional,biome,subbiome
-    rule_type: String,   //Ex village,enemey_nest, dugeon, city,etc.
-    rule_id: BaseRuleId, //Specific modifier or structure ex elven tree / goblin camp.
-}
-impl BaseRule {
-    pub fn get_min_weight(&self) -> f32 {
-        self.min_weight
-    }
-    pub fn is_feature(&self) -> bool {
-        self.is_feature
-    }
-    pub fn get_scope(&self) -> String {
-        self.scope.clone()
-    }
-    pub fn get_rule_type(&self) -> String {
-        self.rule_type.clone()
-    }
-    pub fn get_rule_id(&self) -> BaseRuleId {
-        self.rule_id
-    }
-}
 
 #[derive(Default)]
 pub struct LocalPlateSample {
@@ -226,23 +148,6 @@ impl LocalPlateSample {
     }
     pub fn get_field(&self) -> ClimateField {
         self.field
-    }
-}
-
-#[derive(Default)]
-pub struct DensityPoint {
-    height: f32,
-    density: f32,
-}
-
-#[derive(Default)]
-pub struct DensityCurve {
-    points: Vec<DensityPoint>,
-}
-impl DensityCurve {
-    pub fn sample(&self, _h: f32) -> f32 {
-        // Piecewise linear interpolation
-        return 0.0;
     }
 }
 
@@ -363,47 +268,3 @@ impl ClimateSample {
   
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TerrainProfileId {
-    pub val: u32,
-}
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NoiseId {
-    pub val: u32,
-}
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct BiomeId {
-    pub val: u32,
-}
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SubBiomeId {
-    pub val: u32,
-}
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct BaseRuleId {
-    pub val: u32,
-}
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct RegionArchetypeId {
-    pub val: u32,
-}
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DensityCurveId {
-    pub val: u32,
-}
-
-pub struct WorldGlossary {
-    terrain_profiles: IdVolume<TerrainProfileId>,
-    noise_fields: IdVolume<NoiseId>,
-    biomes: IdVolume<BiomeId>,
-    sub_biomes: IdVolume<SubBiomeId>,
-    region_archetypes: IdVolume<RegionArchetypeId>,
-    base_rules: IdVolume<BaseRuleId>,
-    density_curves: IdVolume<DensityCurveId>,
-}

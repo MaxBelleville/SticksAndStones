@@ -58,9 +58,6 @@
                 }
             ]
         },
-        "registry": {
-            "type": "string"
-        },
         "settings": {
             "type": "object"
         }

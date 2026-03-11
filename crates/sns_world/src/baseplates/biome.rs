@@ -2,8 +2,6 @@ use bevy_math::*;
 
 use crate::{
     SUBBIOME_OFFSET_SCALE, WEIGHT_EPSILON,
-    prelude::PartialClimateField,
-    structs::{BaseRuleId, BiomeId, SubBiomeId, TerrainProfileId},
 };
 
 use sns_core::prelude::*;
@@ -63,44 +61,8 @@ impl Plate {
     }
 }
 
-//Details what kinda terrain emergies under the climate conditions(will likely be a blend between mutiple biomes).
-#[derive(Default)]
-pub struct Biome {
-    id: BiomeId,
-    // Climate preference
-    center: PartialClimateField,
-    width: PartialClimateField,
-    sub_ids: Vec<SubBiomeId>,
-
-    // What terrain this biome produces
-    terrain_profile_id: TerrainProfileId,
-    base_rule_ids: Vec<BaseRuleId>,
-}
-
-//Add localized character to each biome so there's variation based on noise + parent weights
-#[derive(Default)]
-pub struct SubBiome {
-    parent_id: BiomeId,
-    id: SubBiomeId,
-    threshold: f32,
-    weight: f32,
-    terrain_profile_id: Option<TerrainProfileId>,
-    base_rule_ids: Vec<BaseRuleId>,
-}
 
 impl SubBiome {
-    pub fn get_parent_id(&self) -> BiomeId {
-        self.parent_id
-    }
-
-    pub fn _get_opt_terrain_profile_id(&self) -> &Option<TerrainProfileId> {
-        &self.terrain_profile_id
-    }
-
-    pub fn _get_base_rule_ids(&self) -> &Vec<BaseRuleId> {
-        &self.base_rule_ids
-    }
-
     pub fn sample(
         &self,
         coord: Vec2,

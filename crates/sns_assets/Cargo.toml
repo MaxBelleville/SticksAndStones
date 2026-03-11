@@ -1,0 +1,13 @@
+[package]
+name = "sns_assets"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+num-traits = {workspace = true}
+bevy_math = {workspace = true}
+serde = {workspace = true}
+serde_json = {workspace = true}
+
+sns_core = {path = "../sns_core"}
+sns_macros = {path = "../sns_macros"}

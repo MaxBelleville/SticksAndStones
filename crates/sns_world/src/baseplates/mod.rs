@@ -3,9 +3,10 @@ mod region;
 mod terrain;
 
 use crate::{
-    prelude::{BaseRules, ClimateField, ClimateSample, GridSampleCache, GridSampler},
-    structs::{LocalPlateSample, NoiseBasisPlate, NoiseId},
+    prelude::{BaseRules, ClimateSample, GridSampleCache, GridSampler},
+    structs::{LocalPlateSample, NoiseBasisPlate},
 };
+
 use bevy_math::*;
 use sns_core::prelude::*;
 

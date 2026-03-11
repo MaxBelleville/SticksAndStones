@@ -1,7 +1,6 @@
-
-use syn::{DeriveInput, Field};
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::{DeriveInput, Field};
 
 pub fn extract_named_fields(input: &DeriveInput) -> Vec<&Field> {
     match &input.data {
@@ -29,12 +28,11 @@ pub fn extract_iterable_trait(input: &DeriveInput) -> TokenStream {
 }
 
 pub fn field_is_skipped(field: &syn::Field) -> bool {
-    field.attrs.iter().any(|attr| {
-        attr.path().is_ident("iterable")
-            && matches!(attr.meta, syn::Meta::Path(_))
-    })
+    field
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("iterable") && matches!(attr.meta, syn::Meta::Path(_)))
 }
-
 
 pub fn expand_iterable_impl<'a>(
     struct_name: &syn::Ident,
@@ -103,4 +101,70 @@ pub fn expand_iterable_mut_impl<'a>(
             }
         }
     }
+}
+
+pub fn extract_container(ty: &syn::Type) -> ContainerType {
+    if let syn::Type::Path(type_path) = ty {
+        let segment = type_path.path.segments.first().unwrap();
+
+        if segment.ident == "Option" {
+            if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                if let Some(syn::GenericArgument::Type(_inner)) = args.args.first() {
+                    return ContainerType::Option;
+                }
+            }
+        }
+
+        if segment.ident == "Vec" {
+            if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                if let Some(syn::GenericArgument::Type(_inner)) = args.args.first() {
+                    return ContainerType::Vec;
+                }
+            }
+        }
+    }
+
+    ContainerType::Single
+}
+pub struct FieldInfo {
+    pub name: syn::Ident,
+    pub asset_ty: Option<syn::Type>,
+    pub container: ContainerType,
+    pub original_ty: syn::Type,
+}
+
+pub enum ContainerType {
+    Single,
+    Option,
+    Vec,
+}
+pub fn analyze_asset_fields(fields: Vec<&syn::Field>) -> Vec<FieldInfo> {
+    let mut result = Vec::new();
+
+    for field in fields {
+        let name = field.ident.clone().unwrap();
+        let ty = field.ty.clone();
+
+        let mut asset_ref = None;
+
+        for attr in &field.attrs {
+            if attr.path().is_ident("asset_ref") {
+                asset_ref = Some(
+                    attr.parse_args::<syn::Type>()
+                        .expect("asset_ref requires type")
+                );
+            }
+        }
+
+        let container = extract_container(&ty);
+
+        result.push(FieldInfo {
+            name,
+            asset_ty: asset_ref,
+            container,
+            original_ty: ty,
+        });
+    }
+
+    result
 }

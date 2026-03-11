@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-num-traits = "0.2.19"
 bytemuck = {workspace = true}
 bevy_math = {workspace = true}
 smallvec = {workspace = true}
