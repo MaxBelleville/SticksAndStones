@@ -3,6 +3,10 @@ use std::collections::{HashMap, HashSet};
 use bevy_math::*;
 
 use crate::prelude::biome;
+use sns_assets::prelude::{
+    BaseRule, BaseRuleID, ClimateField, ClimateFieldID, NoiseBasis, NoiseFieldID,
+    RegionArchetypeID, DensityCurveID,  
+};
 
 #[derive(Default)]
 pub struct NoiseBasisPlate {
@@ -11,69 +15,67 @@ pub struct NoiseBasisPlate {
     local: NoiseBasis,
 }
 impl NoiseBasisPlate {
-    pub fn get_climate(&self) -> &NoiseBasis {
+    pub fn climate(&self) -> &NoiseBasis {
         &self.climate
     }
-    pub fn get_region(&self) -> &NoiseBasis {
+    pub fn region(&self) -> &NoiseBasis {
         &self.region
     }
-    pub fn get_local(&self) -> &NoiseBasis {
+    pub fn local(&self) -> &NoiseBasis {
         &self.local
     }
-    pub fn get_climate_id(&self) -> NoiseId {
-        self.climate.get_noise_id()
+    pub fn climate_id(&self) -> &NoiseFieldID {
+        self.climate.noise_id()
     }
-    pub fn get_region_id(&self) -> NoiseId {
-        self.region.get_noise_id()
+    pub fn region_id(&self) -> &NoiseFieldID {
+        self.region.noise_id()
     }
-    pub fn get_local_id(&self) -> NoiseId {
-        self.local.get_noise_id()
+    pub fn local_id(&self) -> &NoiseFieldID {
+        self.local.noise_id()
     }
-    pub fn get_climate_weight(&self) -> ClimateField {
-        self.climate.get_weight()
+    pub fn climate_weight_id(&self) -> &ClimateFieldID {
+        self.climate.weight_id()
     }
-    pub fn get_region_weight(&self) -> ClimateField {
-        self.region.get_weight()
+    pub fn region_weight_id(&self) -> &ClimateFieldID {
+        self.region.weight_id()
     }
-    pub fn get_local_weight(&self) -> ClimateField {
-        self.local.get_weight()
+    pub fn local_weight_id(&self) -> &ClimateFieldID {
+        self.local.weight_id()
     }
 }
-
 
 #[derive(Default)]
 pub struct BaseRules {
-    rules: HashMap<BaseRuleId, BaseRule>,
+    rules: HashMap<BaseRuleID, BaseRule>,
 }
 impl BaseRules {
-    pub fn get_rules(&self) -> &HashMap<BaseRuleId, BaseRule> {
+    pub fn rules(&self) -> &HashMap<BaseRuleID, BaseRule> {
         &self.rules
     }
-    pub fn get_rule(&self, id: BaseRuleId) -> Option<&BaseRule> {
+    pub fn rule(&self, id: BaseRuleID) -> Option<&BaseRule> {
         self.rules.get(&id)
     }
 
     pub fn apply_rules(&self, samples: &mut Vec<biome::Sample>) {
         for sample in samples {
-            let weight = sample.get_weight();
-            self.recompute_rules(sample.get_mut_rule_ids(), weight);
-            for sub in sample.get_mut_sub_sample() {
-                let sub_weight = sub.get_weight();
-                self.recompute_rules(sub.get_mut_rule_ids(), sub_weight);
+            let weight = sample.weight();
+            self.recompute_rules(sample.mut_rule_ids(), weight);
+            for sub in sample.mut_sub_sample() {
+                let sub_weight = sub.weight();
+                self.recompute_rules(sub.mut_rule_ids(), sub_weight);
             }
         }
     }
-    pub fn recompute_rules(&self, rule_ids: &mut Vec<BaseRuleId>, weight: f32) {
+    pub fn recompute_rules(&self, rule_ids: &mut Vec<BaseRuleID>, weight: f32) {
         rule_ids.retain(|&rule_id| {
             if let Some(rule) = self.rules.get(&rule_id) {
-                weight >= rule.get_min_weight()
+                weight >= rule.min_weight()
             } else {
                 false
             }
         });
     }
 }
-
 
 #[derive(Default)]
 pub struct LocalPlateSample {
@@ -83,16 +85,16 @@ pub struct LocalPlateSample {
     height_variance: f32,
     roughness: f32,
     erosion_bias: f32,
-    density_curve_id: Option<DensityCurveId>,
+    density_curve_id: Option<DensityCurveID>,
     weight_sum: f32,
 
-    base_rule_ids: Vec<BaseRuleId>,
+    base_rule_ids: Vec<BaseRuleID>,
 }
 impl LocalPlateSample {
-    pub fn insert_first_density_id(&mut self, density_curve_id: Option<DensityCurveId>) {
+    pub fn insert_first_density_id(&mut self, density_curve_id: &Option<DensityCurveID>) {
         //If self.density_curve_id doesn't exists and parameter density_curve_id exists add
         if self.density_curve_id.is_none() && density_curve_id.is_some() {
-            self.density_curve_id = density_curve_id;
+            self.density_curve_id = density_curve_id.clone();
         }
     }
     pub fn normalize(&mut self) {
@@ -103,7 +105,7 @@ impl LocalPlateSample {
         self.erosion_bias /= self.weight_sum;
         self.weight_sum = 1.0; // Just to make sure it's impossible to normalize again without changing values.
     }
-    pub fn set_base_rule_ids(&mut self, base_rule_ids: Vec<BaseRuleId>) {
+    pub fn set_base_rule_ids(&mut self, base_rule_ids: Vec<BaseRuleID>) {
         self.base_rule_ids = base_rule_ids;
     }
     pub fn set_field(&mut self, field: ClimateField) {
@@ -124,29 +126,29 @@ impl LocalPlateSample {
         self.weight_sum += weight;
     }
 
-    pub fn get_base_rules(&self) -> &Vec<BaseRuleId> {
+    pub fn base_rules(&self) -> &Vec<BaseRuleID> {
         &self.base_rule_ids
     }
 
-    pub fn get_height_mean(&self) -> f32 {
+    pub fn height_mean(&self) -> f32 {
         self.height_mean
     }
-    pub fn get_height_variance(&self) -> f32 {
+    pub fn height_variance(&self) -> f32 {
         self.height_variance
     }
-    pub fn get_roughness(&self) -> f32 {
+    pub fn roughness(&self) -> f32 {
         self.roughness
     }
-    pub fn get_erosion_bias(&self) -> f32 {
+    pub fn erosion_bias(&self) -> f32 {
         self.erosion_bias
     }
-    pub fn get_density_curve_id(&self) -> Option<DensityCurveId> {
+    pub fn density_curve_id(&self) -> Option<DensityCurveID> {
         self.density_curve_id
     }
-    pub fn get_weight_sum(&self) -> f32 {
+    pub fn weight_sum(&self) -> f32 {
         self.weight_sum
     }
-    pub fn get_field(&self) -> ClimateField {
+    pub fn field(&self) -> ClimateField {
         self.field
     }
 }
@@ -189,16 +191,16 @@ impl<T> GridSampleCache<T> {
     pub fn pos_reduce_to_cell(&self, pos: Vec2) -> Vec2 {
         Vec2::new(pos.x / self.grid_size, pos.y / self.grid_size)
     }
-    pub fn get_grid_size(&self) -> f32 {
+    pub fn grid_size(&self) -> f32 {
         self.grid_size
     }
-    pub fn get_cell_res(&self) -> i32 {
+    pub fn cell_res(&self) -> i32 {
         self.cell_res
     }
-    pub fn get_cell(&self, grid_coord: IVec2) -> &T {
+    pub fn cell(&self, grid_coord: IVec2) -> &T {
         self.grid.get(&grid_coord).unwrap()
     }
-    pub fn get_mut_values(&mut self) -> Vec<&mut T> {
+    pub fn mut_values(&mut self) -> Vec<&mut T> {
         self.grid.values_mut().collect()
     }
 
@@ -222,16 +224,16 @@ impl<T> GridSampleCache<T> {
 pub struct ClimateSample {
     field: ClimateField,
     biome_samples: Vec<biome::Sample>,
-    archetype_id: RegionArchetypeId,
-    base_rule_ids: Vec<BaseRuleId>,
+    archetype_id: RegionArchetypeID,
+    base_rule_ids: Vec<BaseRuleID>,
 }
 
 impl ClimateSample {
     pub fn new(
         field: ClimateField,
         biome_samples: Vec<biome::Sample>,
-        archetype_id: RegionArchetypeId,
-        base_rule_ids: Vec<BaseRuleId>,
+        archetype_id: RegionArchetypeID,
+        base_rule_ids: Vec<BaseRuleID>,
     ) -> Self {
         Self {
             field,
@@ -241,30 +243,28 @@ impl ClimateSample {
         }
     }
 
-    pub fn get_field(&self) -> ClimateField {
+    pub fn field(&self) -> ClimateField {
         self.field
     }
     pub fn set_field(&mut self, field: ClimateField) {
         self.field = field;
     }
 
-    pub fn get_biome_samples(&self) -> &Vec<biome::Sample> {
+    pub fn biome_samples(&self) -> &Vec<biome::Sample> {
         &self.biome_samples
     }
-     pub fn get_mut_biome_samples(&mut self) -> &mut Vec<biome::Sample> {
+    pub fn mut_biome_samples(&mut self) -> &mut Vec<biome::Sample> {
         &mut self.biome_samples
     }
     pub fn set_biomes_samples(&mut self, biome_samples: Vec<biome::Sample>) {
         self.biome_samples = biome_samples;
     }
 
-    pub fn get_archetype_id(&self) -> RegionArchetypeId {
+    pub fn archetype_id(&self) -> RegionArchetypeID {
         self.archetype_id
     }
 
-    pub fn get_base_rule_ids(&self) -> &Vec<BaseRuleId> {
+    pub fn base_rule_ids(&self) -> &Vec<BaseRuleID> {
         &self.base_rule_ids
     }
-  
 }
-

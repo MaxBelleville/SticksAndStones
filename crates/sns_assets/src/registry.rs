@@ -1,33 +1,11 @@
-use std::any::{Any, TypeId};
+use std::any::{TypeId};
 use std::collections::HashMap;
 use std::hash::Hash;
-
 use sns_macros::register_assets;
 use crate::baseplates;
 
-use super::{enviroment, worldshared, DefinedAsset, AssetRef};
+use super::{enviroment,metadata, worldshared, DefinedAsset, AssetRef};
 
-
-pub struct RegistrySystem {
-    registries: HashMap<TypeId, Box<dyn AssetRegistryDyn>>,
-}
-impl RegistrySystem {
-    pub fn get<A: DefinedAsset + 'static>(&self) -> Option<&AssetRegistry<A::ID, A>> {
-        self.registries
-            .get(&TypeId::of::<A>())
-            .and_then(|r| r.as_any().downcast_ref())
-    }
-
-    pub fn get_mut<A: DefinedAsset + 'static>(&mut self) -> Option<&mut AssetRegistry<A::ID, A>> {
-        self.registries
-            .get_mut(&TypeId::of::<A>())
-            .and_then(|r| r.as_any_mut().downcast_mut())
-    }
-    pub fn init_registry<A: DefinedAsset + 'static>(&mut self) {
-        self.registries
-            .insert(TypeId::of::<A>(), A::create_registry());
-    }
-}
 
 register_assets!(
     enviroment::Curves,
@@ -79,23 +57,6 @@ impl<ID: Eq + Hash + From<u32> + Into<u32> + Copy, Asset> AssetRegistry<ID, Asse
     }
 }
 
-pub trait AssetRegistryDyn: Any {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-impl<ID, Asset> AssetRegistryDyn for AssetRegistry<ID, Asset>
-where
-    ID: 'static,
-    Asset: 'static,
-{
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
 
 #[derive(Default, Debug)]
 pub struct AssetStorage<ID, Asset> {

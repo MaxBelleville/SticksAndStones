@@ -1,9 +1,7 @@
 use bevy_math::*;
 use serde::Deserialize;
 use sns_macros::{AssetDef, FieldMath};
-use sns_core::prelude::*;
-use super::{DefinedAsset, AssetRef, registry, schema};
-
+use super::{DefinedAsset, AssetRef, registry, metadata,IterableMut,IterableRef};
 
 
 #[derive(Default, AssetDef)]
@@ -39,12 +37,6 @@ impl ClimateField {
     pub fn abs_rugedness(&mut self) {
         self.ruggedness = self.ruggedness.abs();
     }
-    pub fn get_temperature(&self) -> f32 {
-        self.temperature
-    }
-    pub fn get_moisture(&self) -> f32 {
-        self.moisture
-    }
 }
 
 
@@ -58,23 +50,6 @@ pub struct BaseRule {
     child_id: Option<BaseRuleID>, //Specific modifier or structure ex elven tree / goblin camp.
 }
 
-impl BaseRule {
-    pub fn get_min_weight(&self) -> f32 {
-        self.min_weight
-    }
-    pub fn is_feature(&self) -> bool {
-        self.is_feature
-    }
-    pub fn get_scope(&self) -> String {
-        self.scope.clone()
-    }
-    pub fn get_rule_type(&self) -> String {
-        self.rule_type.clone()
-    }
-    pub fn get_child_id(&self) -> Option<BaseRuleID> {
-        self.child_id
-    }
-}
 #[derive(Default, AssetDef)]
 pub struct TerrainProfile {
     #[asset_ref(NoiseField)]
@@ -92,7 +67,6 @@ pub struct DensityPoint {
     height: f32,
     density: f32,
 }
-
 
 #[derive(Default, AssetDef)]
 pub struct DensityCurve {

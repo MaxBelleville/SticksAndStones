@@ -1,24 +1,9 @@
 use bevy_math::*;
 use bytemuck::NoUninit;
-use simdnoise::NoiseBuilder;
 use std::marker::PhantomData;
 use std::mem::size_of;
 
 
-
-
-// impl NoiseField {
-//     pub fn sample_fbm_2d(&self, coord: Vec2, seed: i32) -> f32 {
-//         let val = NoiseBuilder::fbm_2d_offset(coord.x, 1, coord.y, 1)
-//             .with_seed(seed)
-//             .with_freq(self.frequency)
-//             .with_octaves(self.octaves)
-//             .with_gain(self.gain)
-//             .with_lacunarity(self.lacunarity)
-//             .generate_scaled(0.0, 1.0);
-//         val[0] * self.mult
-//     }
-// }
 
 pub struct LinearAllocator<T> {
     storage: Vec<T>,

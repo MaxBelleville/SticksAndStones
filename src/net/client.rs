@@ -39,6 +39,6 @@ fn on_connected(
 ) {
     for _ev in messages.read() {
         info!("Connected to SpacetimeDB");
-        next.set(LoadState::WorldGen2D);
+        next.set(LoadState::LoadAssets);
     }
 }

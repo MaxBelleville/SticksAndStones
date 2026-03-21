@@ -1,22 +1,22 @@
 {
       "assets": [
         {
-            "type": "baseplates:NoiseBasis",
+            "asset_type": "baseplates:NoiseBasis",
             "schema": "noise_basis.schema.json",
             "files": ["noise_basis.json"]
         },
         {
-            "type": "baseplates:RegionArchetype",
+            "asset_type": "baseplates:RegionArchetype",
             "schema": "region.schema.json",
             "files": ["region.json"]
         },
         {
-            "type": "baseplates:Biome",
+            "asset_type": "baseplates:Biome",
             "schema": "biomes/biome.schema.json",
             "files": ["biomes/biome.json"]
         },
         {
-            "type": "baseplates:SubBiome",
+            "asset_type": "baseplates:SubBiome",
             "schema": "biomes/subbiome.schema.json",
             "files": ["biomes/subbiome.json"]
         }

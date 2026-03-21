@@ -2,17 +2,17 @@
     "version": 1,
     "assets": [
         {
-            "type": "enviroment:Preset",
+            "asset_type": "enviroment:Preset",
             "schema": "presets/preset.schema.json",
             "files": ["presets/preset.json"]
         },
         {
-            "type": "enviroment:PresetSegement",
+            "asset_type": "enviroment:PresetSegement",
             "schema": "presets/segement.schema.json",
             "files": ["presets/segement.json"]
         },
         {
-            "type": "enviroment:Curve",
+            "asset_type": "enviroment:Curve",
             "schema": "curve.schema.json",
             "files": ["curve.json"]
         }

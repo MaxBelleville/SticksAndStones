@@ -1,6 +1,7 @@
 use core::f32;
 use std::collections::HashMap;
 
+use sns_assets::prelude::{RegionArchetype,RegionArchetypeID};
 use sns_core::prelude::*;
 
 use bevy_math::*;
@@ -10,8 +11,8 @@ pub type Coord = IVec2;
 
 pub struct Plate {
     //Node id: node
-    archetypes: HashMap<RegionArchetypeId, Archetype>,
-    archetypes_ids: Vec<RegionArchetypeId>, //Collect and sort keys when load in archetypes from file.
+    archetypes: HashMap<RegionArchetypeID, RegionArchetype>,
+    archetypes_ids: Vec<RegionArchetypeID>, //Collect and sort keys when load in archetypes from file.
     region_size: f32,
 }
 impl Default for Plate {
@@ -25,7 +26,7 @@ impl Default for Plate {
 }
 
 impl Plate {
-    pub fn get_archetype(&self, id: RegionArchetypeId) -> Option<&Archetype> {
+    pub fn get_archetype(&self, id: RegionArchetypeID) -> Option<&RegionArchetype> {
         self.archetypes.get(&id)
     }
 
@@ -69,7 +70,7 @@ impl Plate {
         VoronoiResult { closest, d1, d2 }
     }
 
-    fn get_archetype_id(&self, coord: Coord,  seed: i32) -> RegionArchetypeId {
+    fn get_archetype_id(&self, coord: Coord,  seed: i32) -> RegionArchetypeID {
         let h = hash2(coord,seed ^ 0xA53C9E);
         let idx = (h as usize) % self.archetypes_ids.len();
         self.archetypes_ids[idx]
@@ -94,14 +95,14 @@ pub struct VoronoiResult {
 #[derive(Default)]
 pub struct Sample {
     _coord: Coord,
-    archetype_id: RegionArchetypeId,
+    archetype_id: RegionArchetypeID,
     edge_factor: f32,
 }
 impl Sample {
     pub fn _get_coord(&self) -> Coord {
         self._coord
     }
-    pub fn get_archetype_id(&self) -> RegionArchetypeId {
+    pub fn get_archetype_id(&self) -> RegionArchetypeID {
         self.archetype_id
     }
     pub fn get_edge_factor(&self) -> f32 {

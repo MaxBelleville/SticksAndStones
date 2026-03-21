@@ -1,6 +1,6 @@
 use bevy_math::*;
 use sns_macros::AssetDef;
-use super::{DefinedAsset,registry,schema, AssetRef};
+use super::{DefinedAsset,registry,metadata, AssetRef};
 
 #[derive(Default,AssetDef)]
 pub struct Curves {

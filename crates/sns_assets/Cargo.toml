@@ -8,6 +8,7 @@ num-traits = {workspace = true}
 bevy_math = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}
+jsonschema = {workspace = true}
+walkdir = "2.5.0"
 
-sns_core = {path = "../sns_core"}
 sns_macros = {path = "../sns_macros"}

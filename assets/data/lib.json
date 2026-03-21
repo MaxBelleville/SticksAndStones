@@ -1,5 +1,6 @@
 {
     "version": 1,
+    "namespace": "root",
     "libraries": [
         "enviroment",
         "worldgen"

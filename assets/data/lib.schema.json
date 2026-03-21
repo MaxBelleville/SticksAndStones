@@ -6,6 +6,9 @@
         "version": {
             "type": "number"
         },
+        "namespace": {
+            "type": "string"
+        },
         "libraries": {
             "type": "array",
             "items": {
@@ -19,7 +22,7 @@
                 "type": "object",
                 "properties": {
                     "type": {
-                        "type": "string",
+                        "asset_type": "string",
                         "format": "namespaced"
                     },
                     "schema": {

@@ -1,5 +1,6 @@
 use bevy_math::*;
-
+use simdnoise::NoiseBuilder;
+use sns_assets::prelude::NoiseField;
 #[inline]
 pub fn div_floor(a: i32, b: i32) -> i32 {
     let d = a / b;
@@ -108,11 +109,22 @@ pub fn morton_split(mut x: u32) -> u32 {
     x = (x | (x << 2)) & 0x09249249;
     x
 }
-
+#[inline]
 pub fn morton3(x: u32, y: u32, z: u32) -> u32 {
     morton_split(x) | (morton_split(y) << 1) | (morton_split(z) << 2)
 }
-
+#[inline]
 pub fn next_pow2(x: usize) -> usize {
     x.next_power_of_two()
+}
+#[inline]
+pub fn sample_fbm_2d(field: &NoiseField, coord: Vec2, seed: i32) -> f32 {
+    let val = NoiseBuilder::fbm_2d_offset(coord.x, 1, coord.y, 1)
+        .with_seed(seed)
+        .with_freq(field.frequency().clone())
+        .with_octaves(field.octaves().clone())
+        .with_gain(field.gain().clone())
+        .with_lacunarity(field.lacunarity().clone())
+        .generate_scaled(0.0, 1.0);
+    val[0] * field.mult()
 }

@@ -7,12 +7,13 @@ pub enum LoadState {
     ServerStarting,
     ServerLoadDatabase,
     Connecting,
-    WorldGen2D,
-    SpawnAssignment,
-    WorldGen3D,
-    Streaming,
+    LoadAssets,
+    BaseplateGen,
+    BrickmapGen,
+    InitGPU,
     InGame,
 }
+
 
 pub struct LoadPlugins;
 impl PluginGroup for LoadPlugins {

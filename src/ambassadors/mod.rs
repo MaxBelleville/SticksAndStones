@@ -5,7 +5,7 @@ What are ambassadors?
 2. they provide abstract systems that we can use in game (example village/town ambassors)
 */
 mod load;
-mod world_gen;
+mod world;
 mod enviroment;
 
 use crate::ui;
@@ -13,7 +13,7 @@ pub struct AmbassorPlugins;
 impl PluginGroup for AmbassorPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>().add_group(load::LoadPlugins)
-        .add_group(world_gen::WorldGenPlugins)
+        .add_group(world::WorldGenPlugins)
         .add(GlobalAmbassorPlugin)
         .add(enviroment::EnviromentPlugin)
     }
