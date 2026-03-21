@@ -2,6 +2,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
+
 use syn::{DeriveInput, Token, Type, parse_macro_input, punctuated::Punctuated};
 mod utils;
 
@@ -136,10 +137,11 @@ pub fn derive_iterable(input: TokenStream) -> TokenStream {
     utils::expand_iterable_impl(struct_name, active_fields.collect(), trait_name).into()
 }
 
-#[proc_macro_derive(AssetDef, attributes(asset_ref))]
+#[proc_macro_derive(AssetDef, attributes(asset_ref,asset))]
 pub fn derive_asset_def(input: TokenStream) -> TokenStream {
     // 1. Parse the input tokens into a syntax tree
     let input = parse_macro_input!(input as DeriveInput);
+    let (type_name, namespace) = utils::parse_asset_attr(&input);
     let fields = utils::extract_named_fields(&input);
     let fields_info = utils::analyze_asset_fields(fields);
 
@@ -170,7 +172,9 @@ pub fn derive_asset_def(input: TokenStream) -> TokenStream {
 
         impl DefinedAsset for #name {
             type ID = #id_name;
-            const TYPE: &'static str = stringify!(#name);
+            const TYPE: &'static str = #type_name;
+            const NAMESPACE: &'static str = #namespace;
+
             fn load_asset(
                 registries: &mut registry::RegistrySystem,
                 value: serde_json::Value
@@ -190,6 +194,13 @@ pub fn derive_asset_def(input: TokenStream) -> TokenStream {
                     #( std::any::TypeId::of::<#dependency_types>() ),*
                 ]
             }
+            fn current_ref() -> AssetRef {
+                AssetRef {
+                    name: Self::TYPE.into(),
+                    namespace: Self::NAMESPACE.into()
+                }
+            }
+
             fn meta() -> metadata::Meta {
                 let mut s = metadata::Meta::object();
                 #( s.field(#meta_fields); )*
@@ -240,12 +251,7 @@ pub fn register_assets(input: TokenStream) -> TokenStream {
             #field: AssetRegistry::default()
         }
     });
-    let meta_calls = types.iter().map(|ty| {
-        quote! {
-            #ty::TYPE => Some(#ty::meta()),
-        }
-    });
-
+  
     let access_impls = types.iter().map(|ty| {
         let field = utils::type_to_ident(ty);
         quote! {
@@ -261,114 +267,160 @@ pub fn register_assets(input: TokenStream) -> TokenStream {
         }
     });
 
-    let match_calls = types.iter().map(|ty| {
+    
+
+  let loader_inserts = types.iter().map(|ty| {
         quote! {
-            #ty::TYPE => {
-                  match json {
+        let loader: fn(&mut Self, &Validator, Value) -> Result<(), String> =
+            |registry, validator, json| {
+                match json {
                     serde_json::Value::Array(arr) => {
                         for v in arr {
                             validator.validate(&v)
                                 .map_err(|e| format!("Validation failed: {}", e))?;
-
-                            #ty::load_asset(self, v).map_err(|e| format!("{}: {}", #ty::TYPE, e))?;
+                            #ty::load_asset(registry, v)?;
                         }
                     }
-
                     v @ serde_json::Value::Object(_) => {
                         validator.validate(&v)
                             .map_err(|e| format!("Validation failed: {}", e))?;
-
-                        #ty::load_asset(self, v).map_err(|e| format!("{}: {}", #ty::TYPE, e))?;
+                        #ty::load_asset(registry, v)?;
                     }
-
-                    _ => {
-                        return Err(format!("Invalid JSON format for {}", #ty::TYPE));
-                    }
+                    _ => return Err("Invalid JSON format".into())
                 }
                 Ok(())
-            }
+            };
+
+        loaders.insert(
+            #ty::current_ref(),
+            loader
+        );
         }
     });
-    let dep_calls = types.iter().map(|ty| {
+
+    let dep_inserts = types.iter().map(|ty| {
+  
         quote!(
-            #ty::TYPE => Some(#ty::dependencies()),
+            let dep: fn() -> Vec<TypeId> = || {
+                #ty::dependencies()
+            };
+
+            deps.insert(
+                #ty::current_ref(),
+                dep
+            );
         )
     });
+    let meta_inserts = types.iter().map(|ty| {
+        quote!(
+            let meta: fn() -> metadata::Meta = || {
+                #ty::meta()
+            };
+
+            metadata.insert(
+            #ty::current_ref(),
+            meta
+        );
+        )
+    });
+
     let get_type = types.iter().map(|ty| {
         quote!(
             #ty::TYPE,
         )
     });
+    let get_refs = types.iter().map(|ty| {
+        quote!(
+            #ty::current_ref(),
+        )
+    });
+
 
     let expanded = quote! {
+
         trait RegistryAccess<T: DefinedAsset> {
             fn get(&self) -> &AssetRegistry<T::ID, T>;
             fn get_mut(&mut self) -> &mut AssetRegistry<T::ID, T>;
         }
 
         pub struct RegistrySystem  {
+            loaders: HashMap<AssetRef, fn(&mut Self, &Validator, Value) -> Result<(), String>>,
+            metadata: HashMap<AssetRef, fn() -> metadata::Meta>,
+            deps: HashMap<AssetRef, fn() -> Vec<TypeId>>,
             #( #struct_fields, )*
         }
         impl Default for RegistrySystem {
             fn default() -> Self {
+                let mut loaders = HashMap::new();
+                let mut metadata = HashMap::new();
+                let mut deps = HashMap::new();
+
+                #( #loader_inserts )*
+                #( #meta_inserts )*
+                #( #dep_inserts )*
+                
+
                 Self {
+                    loaders,
+                    metadata,
+                    deps,
                     #( #init_fields, )*
                 }
             }
         }
 
         impl RegistrySystem {
-            pub fn load_by_type(
+           pub fn load_by_type(
                 &mut self,
-                ty: &str,
-                validator: &jsonschema::Validator,
-                json: serde_json::Value
+                r: &AssetRef,
+                validator: &Validator,
+                json: Value
             ) -> Result<(), String> {
-                return match ty {
-                     #( #match_calls )*
-                    _ => Err("unknown asset type".to_string())
-                }
+                let loader = self.loaders
+                .get(r)
+                .ok_or_else(|| format!("unknown asset type '{}'", r))?;
+
+                loader(self, validator, json)
             }
-            pub fn get_meta(&self, ty: &str) -> Option<metadata::Meta> {
-                match ty {
-                    #( #meta_calls )*
-                    _ => None
-                }
+            pub fn get_meta(&self, r: &AssetRef) -> Option<metadata::Meta> {
+                self.metadata.get(r).map(|f| f())
             }
-            pub fn dependencies_of(ty: &str) -> Option<Vec<TypeId>> {
-                match ty {
-                    #( #dep_calls )*
-                    _ => None
-                }
+            pub fn dependencies_of(&self, r: &AssetRef) -> Option<Vec<TypeId>> {
+                self.deps.get(r).map(|f| f())
             }
             pub fn get_types(&self)-> Vec<&'static str>{
-                 vec![
+                vec![
                     #( #get_type )*
                 ]
             }
+            pub fn get_refs(&self) -> Vec<AssetRef> {
+                vec![
+                    #( #get_refs )*
+                ]
+            }
 
-            pub fn get<T: DefinedAsset>(&self) -> &AssetRegistry<T::ID, T>
+            pub(crate) fn get<T: DefinedAsset>(&self) -> &AssetRegistry<T::ID, T>
             where
                 Self: RegistryAccess<T>,
             {
                 <Self as RegistryAccess<T>>::get(self)
             }
 
-            pub fn get_mut<T: DefinedAsset>(&mut self) -> &mut AssetRegistry<T::ID, T>
+            pub(crate) fn get_mut<T: DefinedAsset>(&mut self) -> &mut AssetRegistry<T::ID, T>
             where
                 Self: RegistryAccess<T>,
             {
                 <Self as RegistryAccess<T>>::get_mut(self)
             }
 
-            pub fn intern<T: DefinedAsset>(&mut self, r: AssetRef) -> T::ID
+            pub(crate) fn intern<T: DefinedAsset>(&mut self, r: AssetRef) -> T::ID
             where
                 Self: RegistryAccess<T>,
             {
                 self.get_mut::<T>().intern(r)
             }
 
-            pub fn insert<T: DefinedAsset>(&mut self, asset: T, r: AssetRef) -> T::ID
+            pub(crate) fn insert<T: DefinedAsset>(&mut self, asset: T, r: AssetRef) -> T::ID
             where
                 Self: RegistryAccess<T>,
             {

@@ -3,10 +3,12 @@ use sns_macros::AssetDef;
 use super::{DefinedAsset,registry,metadata, AssetRef};
 
 #[derive(Default,AssetDef)]
-pub struct Curves {
+#[asset(type = "Curve", namespace = "enviroment")]
+pub struct Curve {
     values: Vec<f32>,
 }
 #[derive(Default,AssetDef)]
+#[asset(type = "Preset", namespace = "enviroment")]
 pub struct Preset {
     sun_color: Vec3,
     alpha_moon_color: Vec3,
@@ -17,9 +19,10 @@ pub struct Preset {
     zenith_color: Vec3,
 }
 #[derive(Default,AssetDef)]
+#[asset(type = "PresetSegement", namespace = "enviroment")]
 pub struct PresetSegement {
-    #[asset_ref(Curves)]
-    curve_id: CurvesID,
+    #[asset_ref(Curve)]
+    curve_id: CurveID,
     #[asset_ref(Preset)]
     start_id: PresetID,
     #[asset_ref(Preset)]

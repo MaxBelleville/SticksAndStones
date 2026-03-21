@@ -301,6 +301,29 @@ pub fn analyze_asset_fields(fields: Vec<&syn::Field>) -> Vec<FieldInfo> {
     result
 }
 
+pub fn parse_asset_attr(input: &syn::DeriveInput) -> (String, String) {
+    let mut ty = None;
+    let mut namespace = None;
+
+    for attr in &input.attrs {
+        if attr.path().is_ident("asset") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("type") {
+                    ty = Some(meta.value()?.parse::<syn::LitStr>()?.value());
+                } else if meta.path.is_ident("namespace") {
+                    namespace = Some(meta.value()?.parse::<syn::LitStr>()?.value());
+                }
+                Ok(())
+            }).unwrap();
+        }
+    }
+
+    (
+        ty.unwrap_or_else(|| input.ident.to_string()),
+        namespace.unwrap_or_else(|| "default".to_string()),
+    )
+}
+
 pub fn generate_id(id_name: &syn::Ident) -> TokenStream {
     quote! {
         #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]

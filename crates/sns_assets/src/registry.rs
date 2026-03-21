@@ -2,13 +2,15 @@ use std::any::{TypeId};
 use std::collections::HashMap;
 use std::hash::Hash;
 use sns_macros::register_assets;
+use jsonschema::Validator;
+use serde_json::Value;
 use crate::baseplates;
 
 use super::{enviroment,metadata, worldshared, DefinedAsset, AssetRef};
 
 
 register_assets!(
-    enviroment::Curves,
+    enviroment::Curve,
     enviroment::Preset,
     enviroment::PresetSegement,
     worldshared::NoiseField,
@@ -43,15 +45,30 @@ impl<ID: Eq + Hash + From<u32> + Into<u32> + Copy, Asset> AssetRegistry<ID, Asse
         id
     }
 
-    pub fn get_asset(&self, id: ID) -> Option<&Asset> {
+    pub fn asset(&self, id: ID) -> Option<&Asset> {
         self.assets.get(id)
     }
-    pub fn get_asset_mut(&mut self, id: ID) -> Option<&mut Asset> {
+
+
+    pub fn asset_mut(&mut self, id: ID) -> Option<&mut Asset> {
         self.assets.get_mut(id)
     }
-    pub fn lookup(&self, asset_ref: &AssetRef) -> Option<&ID> {
+    pub fn lookup_id(&self, asset_ref: &AssetRef) -> Option<&ID> {
         self.glossary.get(asset_ref)
     }
+    pub fn lookup_asset(&self, asset_ref: &AssetRef) -> Option<&Asset> {
+        if let Some(id) = self.glossary.get(asset_ref) {
+            return self.assets.get(*id);
+        }
+        None
+    }
+    pub fn lookup_asset_mut(&mut self, asset_ref: &AssetRef) -> Option<&mut Asset> {
+        if let Some(id) = self.glossary.get(asset_ref) {
+            return self.assets.get_mut(*id);
+        }
+        None
+    }
+
     pub fn resolve(&self, id: ID) -> &AssetRef {
         self.glossary.resolve(id)
     }

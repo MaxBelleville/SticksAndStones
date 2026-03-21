@@ -5,6 +5,7 @@ use super::{DefinedAsset,AssetRef, registry, metadata, worldshared,IterableMut,I
 
 
 #[derive(Default, AssetDef)]
+#[asset(type = "NoiseBasis", namespace = "baseplates")]
 pub struct NoiseBasis {
     #[asset_ref(worldshared::NoiseField)]
     noise_id: worldshared::NoiseFieldID,
@@ -13,6 +14,7 @@ pub struct NoiseBasis {
 }
 
 #[derive(Default,  AssetDef)]
+#[asset(type = "RegionArchetype", namespace = "baseplates")]
 pub struct RegionArchetype {
     #[asset_ref(worldshared::ClimateField)]
     bias_id:  worldshared::ClimateFieldID,
@@ -23,6 +25,7 @@ pub struct RegionArchetype {
 }
 
 #[derive(Default,  AssetDef)]
+#[asset(type = "Biome", namespace = "baseplates")]
 pub struct Biome {
     // Climate preference
     center: PartialClimateField,
@@ -38,6 +41,7 @@ pub struct Biome {
 }
 
 #[derive(Default,  AssetDef)]
+#[asset(type = "SubBiome", namespace = "baseplates")]
 pub struct SubBiome {
     #[asset_ref(Biome)]
     parent_id: BiomeID,

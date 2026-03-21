@@ -1,3 +1,5 @@
+
+use std::fmt::Display;
 use std::{any::TypeId, hash::Hash};
 use std::sync::Arc;
 
@@ -25,17 +27,20 @@ pub mod prelude {
 pub trait DefinedAsset: Sized + 'static {
     type ID: Eq + Hash + From<u32> + Into<u32> + Copy;
     const TYPE: &'static str;
+    const NAMESPACE: &'static str;
+    
     fn load_asset(
         registries: &mut registry::RegistrySystem,
         value: serde_json::Value,
     )->Result<(),String>;
     fn dependencies() -> Vec<TypeId>;
     fn meta() -> metadata::Meta;
+    fn current_ref() -> AssetRef;
     fn visit_asset_refs<F:  FnMut(TypeId, u32)>(&self, visitor: F);
 }
 
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+#[derive(Hash, Eq, PartialEq, Clone, Debug,Default)]
 pub struct AssetRef {
     pub namespace: Arc<str>,
     pub name: Arc<str>,
@@ -49,6 +54,12 @@ impl From<String> for AssetRef {
         }
     }
 }
+impl Display for AssetRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.namespace, self.name)
+    }
+}
+
 impl Into<String> for AssetRef {
     fn into(self) -> String {
         format!("{}:{}", self.namespace, self.name)
@@ -93,10 +104,10 @@ pub struct Libraries {
     registry: registry::RegistrySystem,
 }
 impl Libraries {
-    pub fn get_registry(&self) -> &registry::RegistrySystem {
+    pub fn registry(&self) -> &registry::RegistrySystem {
         &self.registry
     }
-    pub fn get_libraries(&self) -> &Vec<Library> {
+    pub fn libraries(&self) -> &Vec<Library> {
         &self.libraries
     }
 }
@@ -112,10 +123,10 @@ impl Library {
             manifest,
         }
     }
-    pub fn get_manifest(&self) -> &LibraryManifest {
+    pub fn manifest(&self) -> &LibraryManifest {
         &self.manifest
     }
-    pub fn get_root(&self) -> &Path {
+    pub fn root(&self) -> &Path {
         &self.root
     }
 }
@@ -137,7 +148,7 @@ pub struct LibraryManifest {
 }
 #[derive(Default,Deserialize)]
 pub struct AssetContainer {
-    asset_type: String,
+    asset_type: AssetRef,
     schema: String,
 
     #[serde(default)]
@@ -229,7 +240,8 @@ pub fn load_assets(libraries: &Vec<Library>, registry: &mut registry::RegistrySy
                 let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
                     continue;
                 };
-
+                //print json value
+      
                 if let Err(e) = registry.load_by_type(
                     &container.asset_type,
                     &asset_schema_validator,

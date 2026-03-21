@@ -17,6 +17,6 @@
     },
     "required": [
         "id",
-        "value"
+        "values"
     ]
 }
