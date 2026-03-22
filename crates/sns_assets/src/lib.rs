@@ -9,21 +9,12 @@ use std::path::{Path, PathBuf};
 use jsonschema::Validator;
 use serde_json::Value;
 
-mod enviroment;
-mod worldshared;
-mod registry;
-mod baseplates;
-mod metadata;
+pub mod enviroment;
+pub mod worldshared;
+pub mod registry;
+pub mod baseplates;
+pub mod metadata;
 mod validators;
-
-pub mod prelude {
-    pub use crate::enviroment::*;
-    pub use crate::worldshared::*;
-    pub use crate::baseplates::*;
-    pub use crate::registry::*;
-    pub use crate::metadata::*;
-}
-
 pub trait DefinedAsset: Sized + 'static {
     type ID: Eq + Hash + From<u32> + Into<u32> + Copy;
     const TYPE: &'static str;

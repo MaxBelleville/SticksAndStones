@@ -8,15 +8,15 @@
             "format": "namespaced"
         },
         "bias_id": {
-            "asset_ref": "worldshared:ClimateField"
+            "asset_ref": "worldshared:climate_field"
         },
         "max_delta_id": {
-            "asset_ref": "worldshared:ClimateField"
+            "asset_ref": "worldshared:climate_field"
         },
         "base_rules_ids": {
             "type": "array",
             "items": {
-                "asset_ref": "worldshared:BaseRule"
+                "asset_ref": "worldshared:base_rule"
             },
             "minItems": 1
         }

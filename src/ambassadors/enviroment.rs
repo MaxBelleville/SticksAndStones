@@ -1,14 +1,15 @@
 use std::f32::consts::{PI, TAU};
 
-use super::TimeManager;
+use super::{TimeManager, world};
 use crate::{renderer, ui};
 use bevy::prelude::*;
+use sns_assets::{AssetRef, enviroment};
 pub struct EnviromentPlugin;
 
 impl Plugin for EnviromentPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<renderer::EnvironmentUniform>()
-            .init_resource::<CurveManager>()
+            .add_systems(OnEnter(ui::ManagerState::InGame), collect_env)
             .add_systems(
                 Update,
                 update_env.run_if(in_state(ui::ManagerState::InGame)),
@@ -16,132 +17,132 @@ impl Plugin for EnviromentPlugin {
     }
 }
 
-fn update_env(
-    // mut sun: Query<&mut Transform, With<SunMarker>>,
-    preset_mgr: Res<CurveManager>,
-    time_mgr: Res<TimeManager>,
-    mut env: ResMut<renderer::EnvironmentUniform>,
-) {
-    // let mut tf: Mut<'_, Transform> = sun.single_mut().unwrap();
-    // let angle = time_mgr.time_of_day * std::f32::consts::TAU;
-    // let rot = Quat::from_rotation_x(angle);
-    // tf.rotation = rot;
-    let tod = time_mgr.get_time_of_day();
-    let time = time_mgr.get_time();
-    let interp = preset_mgr.sample(time,tod);
-    env.set_interpulated(interp);
+pub struct PresetCurve {
+    start: enviroment::Preset,
+    end: enviroment::Preset,
+    curve: SampleAutoCurve<f32>,
+    duration: Vec2,
 }
+
 #[derive(Resource)]
 pub struct CurveManager {
     sun_intensity: SampleAutoCurve<f32>,
     moon_intensity: SampleAutoCurve<f32>,
-    blend: SampleAutoCurve<f32>,
     fog_density: SampleAutoCurve<f32>,
-    presets: Vec<renderer::EnviromentPreset>,
-}
-impl Default for CurveManager {
-    fn default() -> Self {
-        let interval = interval(0.0, 1.0).unwrap();
-        Self {
-            sun_intensity: SampleAutoCurve::<f32>::new(interval, CurveManager::sun_intensity())
-                .unwrap(),
-            moon_intensity: SampleAutoCurve::<f32>::new(interval, CurveManager::moon_intensity())
-                .unwrap(),
-            fog_density: SampleAutoCurve::<f32>::new(interval, CurveManager::fog()).unwrap(),
-            blend: SampleAutoCurve::<f32>::new(interval, CurveManager::blend()).unwrap(),
-            presets: vec![
-                renderer::EnviromentPreset::dawn_preset(),
-                renderer::EnviromentPreset::noon_preset(),
-                renderer::EnviromentPreset::dusk_preset(),
-                renderer::EnviromentPreset::midnight_preset(),
-            ],
-        }
-    }
+    preset_curves: Vec<PresetCurve>,
 }
 impl CurveManager {
-    fn sun_intensity() -> [f32; 8] {
-        [
-            0.0, 
-            0.0, 
-            0.01, 
-            0.1,  //sun rise
-            0.5, 
-            1.0, 
-            1.0, //noon
-            1.0, 
-        ]
+    pub fn add_preset(
+        &mut self,
+        start: enviroment::Preset,
+        end: enviroment::Preset,
+        curve: enviroment::Curve,
+        duration: Vec2,
+    ) {
+        let interval = interval(0.0, 1.0).unwrap();
+        self.preset_curves.push(PresetCurve {
+            start,
+            end,
+            curve: SampleAutoCurve::<f32>::new(interval, curve.values().iter().cloned()).unwrap(),
+            duration,
+        });
     }
-    fn moon_intensity() -> [f32; 8] {
-        [   
-            1.0, 
-            1.0, // night
-            0.9, 
-            0.7, // sunset
-            0.2, 
-            0.01, 
-            0.0, 
-            0.0, 
-        ]
-    }
-    fn fog() -> [f32; 8] {
-        [
-            0.06,
-            0.04, 
-            0.02,  
-            0.03, 
-            0.04, 
-            0.02, 
-            0.01, 
-            0.005, 
-        ]
-    }
-    fn blend() -> [f32; 8] {
-        [
-        0.0,
-        0.0,
-        0.0,
-        0.1,
-        0.6,
-        1.0,
-        1.0,
-        1.0
-        ]
-    }
-
-    pub fn sample(&self, time: f32, tod: f32) -> renderer::EnviromentInterpolated {
-        //TODO: Change enviorment to have blend per segement instead of a general blend
-        let sun_angle = time * TAU;
-        let sun_elevation = sun_angle.sin();
-
-        let sun_point = (sun_elevation + 1.0) * 0.5;
-
-        let segment = tod * self.presets.len() as f32;
-        let mut index = segment.floor() as usize;
-        if index == self.presets.len() {
-            index -= 1;
+    pub fn new(sun: enviroment::Curve, moon: enviroment::Curve, fog: enviroment::Curve) -> Self {
+        let interval = interval(0.0, 1.0).unwrap();
+        Self {
+            sun_intensity: SampleAutoCurve::<f32>::new(interval, sun.values().iter().cloned())
+                .unwrap(),
+            moon_intensity: SampleAutoCurve::<f32>::new(interval, moon.values().iter().cloned())
+                .unwrap(),
+            fog_density: SampleAutoCurve::<f32>::new(interval, fog.values().iter().cloned())
+                .unwrap(),
+            preset_curves: vec![],
         }
-        let next = (index + 1) % self.presets.len();
+    }
+    pub fn sample(&self, time: f32) -> renderer::EnviromentInterpolated {
+        let mut t = time;
 
-        let local_t = segment - index as f32;
+        let min_start = self
+            .preset_curves
+            .iter()
+            .map(|s| s.duration.x)
+            .fold(f32::INFINITY, f32::min);
 
-        let blend = self.blend.sample(local_t).unwrap();
- 
-        let preset = self.presets[index].lerp(&self.presets[next], blend);
-        let mut interpulated: renderer::EnviromentInterpolated = preset.into();
+        if t < min_start {
+            t += 1.0;
+        }
 
-        let sun_intensity = self.sun_intensity.sample(sun_point).unwrap();
-        let moon_intensity = self.moon_intensity.sample(sun_point).unwrap();
-        let fog_density = self.fog_density.sample(sun_point).unwrap();
+        let seg = self
+            .preset_curves
+            .iter()
+            .find(|s| t >= s.duration.x && t < s.duration.y + 1e-5)
+            .expect("No segment matched time");
 
-        interpulated.set_sun(sun_angle, sun_intensity);
-        interpulated.set_moons(
-            sun_angle+PI,
-            moon_intensity,
-         
-        );
-        interpulated.set_fog(fog_density);
+        let mut local_t = (t - seg.duration.x) / (seg.duration.y - seg.duration.x);
+        local_t = local_t.clamp(0.0, 1.0);
 
-        interpulated
+        let blend = seg.curve.sample(local_t).unwrap_or(local_t);
+
+        let preset = seg.start.lerp(&seg.end, blend);
+        let mut out: renderer::EnviromentInterpolated = preset.into();
+
+        let sun_angle = t * TAU;
+        let sun_height = sun_angle.sin();
+        let sun_point = (sun_height + 1.0) * 0.5;
+
+        let sun_intensity = self.sun_intensity.sample(sun_point).unwrap_or(1.0);
+        let moon_intensity = self.moon_intensity.sample(sun_point).unwrap_or(0.0);
+        let fog_density = self.fog_density.sample(sun_point).unwrap_or(0.02);
+
+        out.set_sun(sun_angle, sun_intensity);
+        out.set_moons(sun_angle + PI, moon_intensity);
+        out.set_fog(fog_density);
+
+        out
     }
 }
 
+fn collect_env(mut commands: Commands, world: Res<world::WorldData>) {
+    let registry = world.get_registry();
+    let fog_data = registry
+        .curve
+        .lookup_asset(&AssetRef::from("enviroment:fog".to_string()))
+        .unwrap();
+    let sun_data = registry
+        .curve
+        .lookup_asset(&AssetRef::from("enviroment:sun_intensity".to_string()))
+        .unwrap();
+    let moon_data = registry
+        .curve
+        .lookup_asset(&AssetRef::from("enviroment:moon_intensity".to_string()))
+        .unwrap();
+
+    let mut curve_mgr = CurveManager::new(sun_data.clone(), moon_data.clone(), fog_data.clone());
+
+    for preset in registry.preset_segement.assets() {
+        if let Some(p) = preset {
+            let start_preset = registry.preset.asset(*p.start_id()).unwrap();
+            let end_preset = registry.preset.asset(*p.end_id()).unwrap();
+            let blend_data = registry.curve.asset(*p.curve_id()).unwrap();
+            let duration = p.duration();
+            curve_mgr.add_preset(*start_preset, *end_preset, blend_data.clone(), duration);
+        }
+    }
+    commands.insert_resource(curve_mgr);
+}
+
+fn update_env(
+    // mut sun: Query<&mut Transform, With<SunMarker>>,
+    curve_mgr_opt: Option<Res<CurveManager>>,
+    time_mgr: Res<TimeManager>,
+    mut env: ResMut<renderer::EnvironmentUniform>,
+) {
+    let Some(curve_mgr) = curve_mgr_opt else {
+        return;
+    };
+
+    let time = time_mgr.get_time_of_day();
+
+    let interp = curve_mgr.sample(time);
+    env.set_interpulated(interp);
+}

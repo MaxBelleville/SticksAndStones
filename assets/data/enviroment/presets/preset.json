@@ -1,1 +1,34 @@
-[]
+[
+    {"id":"enviroment:dawn",
+    "sun_color": [1.0, 0.75, 0.55],
+    "alpha_moon_color": [0.739, 0.716, 0.676],
+    "beta_moon_color": [0.608, 0.529, 0.792],
+    "horizon_color": [0.2, 0.3, 0.6],
+    "mid_color": [0.6, 0.4, 0.7],
+    "zenith_color": [0.2, 0.3, 0.6]
+    },
+    {"id":"enviroment:noon",
+    "sun_color": [1.0, 1.0, 1.0],
+    "alpha_moon_color": [0.688, 0.704, 0.716],
+    "beta_moon_color": [0.749, 0.769, 0.788],
+    "horizon_color": [0.6, 0.8, 1.0],
+    "mid_color": [0.3, 0.55, 1.0],
+    "zenith_color": [0.1, 0.35, 0.9]
+    },
+    {"id":"enviroment:dusk",
+    "sun_color": [1.0, 0.65, 0.5],
+    "alpha_moon_color": [0.382, 0.333, 0.731],
+    "beta_moon_color": [0.886, 0.784, 0.7],
+    "horizon_color": [1.0, 0.4, 0.3],
+    "mid_color": [0.8, 0.3, 0.4],
+    "zenith_color": [0.25, 0.2, 0.45]
+    },
+    {"id":"enviroment:night",
+    "sun_color": [0.7, 0.7, 0.8],
+    "alpha_moon_color": [0.688, 0.704, 0.743],
+    "beta_moon_color": [0.447, 0.388, 0.851],
+    "horizon_color": [0.05, 0.06, 0.1],
+    "mid_color": [0.04, 0.04, 0.09],
+    "zenith_color": [0.02, 0.03, 0.07]
+    }
+]

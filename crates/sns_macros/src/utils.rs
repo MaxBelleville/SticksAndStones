@@ -1,3 +1,4 @@
+use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -319,7 +320,7 @@ pub fn parse_asset_attr(input: &syn::DeriveInput) -> (String, String) {
     }
 
     (
-        ty.unwrap_or_else(|| input.ident.to_string()),
+        ty.unwrap_or_else(|| input.ident.to_string().to_snake_case()),
         namespace.unwrap_or_else(|| "default".to_string()),
     )
 }
@@ -365,7 +366,7 @@ pub fn is_copy_type(ty: &syn::Type) -> bool {
                 // primitives
                 "u8" | "u16" | "u32" | "u64" |
                 "i8" | "i16" | "i32" | "i64" |
-                "f32" | "f64" |
+                "f32" | "f64" | "Vec3" | "Vec4" | "Vec2" |
                 "bool" | "char" |
 
                 // common small types
@@ -388,7 +389,7 @@ pub fn is_copy_type(ty: &syn::Type) -> bool {
 pub fn type_to_ident(ty: &syn::Type) -> syn::Ident {
     if let syn::Type::Path(type_path) = ty {
         let ident = &type_path.path.segments.last().unwrap().ident;
-        let name = ident.to_string().to_lowercase();
+        let name = ident.to_string().to_snake_case();
         quote::format_ident!("{}", name)
     } else {
         panic!("Unsupported type in register_assets!");

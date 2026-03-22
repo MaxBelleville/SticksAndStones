@@ -39,7 +39,7 @@ mod enviroment;
 use crate::window::WindowSettings;
 pub struct RendererPlugins;
 pub use structs::RasterMaterial;
-pub use enviroment::{EnvironmentUniform,EnviromentPreset,EnviromentInterpolated};
+pub use enviroment::{EnvironmentUniform,EnviromentInterpolated};
 
 impl PluginGroup for RendererPlugins {
     fn build(self) -> PluginGroupBuilder {

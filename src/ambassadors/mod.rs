@@ -81,7 +81,7 @@ pub struct TimeManager {
 impl Default for TimeManager {
     fn default() -> Self {
         Self {
-            time_of_day: 0.20,
+            time_of_day: 0.0,
             day_speed: 0.05,
             day_count: 0,
             year_count: 0,

@@ -5,7 +5,7 @@ use super::{DefinedAsset, AssetRef, registry, metadata,IterableMut,IterableRef};
 
 
 #[derive(Default, AssetDef)]
-#[asset(type = "NoiseField", namespace = "worldshared")]
+#[asset(namespace = "worldshared")]
 pub struct NoiseField {
     frequency: f32,
     octaves: u8,
@@ -16,7 +16,7 @@ pub struct NoiseField {
 
 
 #[derive(Default, Copy, Clone, FieldMath, AssetDef)]
-#[asset(type = "ClimateField", namespace = "worldshared")]
+#[asset(namespace = "worldshared")]
 pub struct ClimateField {
     temperature: f32,
     moisture: f32,
@@ -43,7 +43,7 @@ impl ClimateField {
 
 
 #[derive(Default, AssetDef)]
-#[asset(type = "BaseRule", namespace = "worldshared")]
+#[asset(namespace = "worldshared")]
 pub struct BaseRule {
     min_weight: f32,
     is_feature: bool,
@@ -54,7 +54,7 @@ pub struct BaseRule {
 }
 
 #[derive(Default, AssetDef)]
-#[asset(type = "TerrainProfile", namespace = "worldshared")]
+#[asset(namespace = "worldshared")]
 pub struct TerrainProfile {
     #[asset_ref(NoiseField)]
     base_noise: NoiseFieldID,
@@ -74,7 +74,7 @@ pub struct DensityPoint {
 }
 
 #[derive(Default, AssetDef)]
-#[asset(type = "DensityCurve", namespace = "worldshared")]
+#[asset(namespace = "worldshared")]
 pub struct DensityCurve {
     points: Vec<DensityPoint>,
 }

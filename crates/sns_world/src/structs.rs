@@ -1,12 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy_math::*;
+use sns_assets::{baseplates::{NoiseBasis, RegionArchetypeID}, worldshared::{BaseRule, BaseRuleID, ClimateField, ClimateFieldID, DensityCurveID, NoiseFieldID}};
 
 use crate::prelude::biome;
-use sns_assets::prelude::{
-    BaseRule, BaseRuleID, ClimateField, ClimateFieldID, NoiseBasis, NoiseFieldID,
-    RegionArchetypeID, DensityCurveID,  
-};
+
 
 #[derive(Default)]
 pub struct NoiseBasisPlate {

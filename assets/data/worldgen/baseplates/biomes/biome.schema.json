@@ -16,15 +16,15 @@
         "sub_ids": {
             "type": "array",
             "items": {
-                "asset_ref": "worldshared:BaseRule"
+                "asset_ref": "worldshared:base_rule"
             },
             "minItems": 1
         },
-        "terrain_profile_id": {"asset_ref":"worldshared:TerrainProfile"},
+        "terrain_profile_id": {"asset_ref":"worldshared:terrain_profile"},
           "base_rules_ids": {
             "type": "array",
             "items": {
-                "asset_ref": "worldshared:BaseRule"
+                "asset_ref": "worldshared:base_rule"
             },
             "minItems": 1
         }

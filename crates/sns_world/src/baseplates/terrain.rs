@@ -3,7 +3,11 @@ use crate::SUBBIOME_BASE_WEIGHT;
 use crate::prelude::{ClimateSample, LocalPlateSample};
 
 use bevy_math::*;
-use sns_assets::prelude::{NoiseField, NoiseFieldID, TerrainProfile, TerrainProfileID};
+
+use sns_assets::worldshared::NoiseField;
+use sns_assets::worldshared::NoiseFieldID;
+use sns_assets::worldshared::TerrainProfile;
+use sns_assets::worldshared::TerrainProfileID;
 use sns_core::prelude::sample_fbm_2d;
 use std::collections::HashMap;
 

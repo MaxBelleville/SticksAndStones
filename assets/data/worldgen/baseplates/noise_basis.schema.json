@@ -8,10 +8,10 @@
             "format": "namespaced"
         },
         "noise_id": {
-            "asset_ref": "worldshared:NoiseField"
+            "asset_ref": "worldshared:noise_field"
         },
         "weight_id": {
-            "asset_ref": "worldshared:ClimateField"
+            "asset_ref": "worldshared:climate_field"
         }
     },
     "required": [

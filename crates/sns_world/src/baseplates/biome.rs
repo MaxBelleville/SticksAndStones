@@ -2,10 +2,7 @@ use bevy_math::*;
 
 use crate::{SUBBIOME_OFFSET_SCALE, WEIGHT_EPSILON};
 
-use sns_assets::prelude::{
-    BaseRuleID, Biome, BiomeID, NoiseField, PartialClimateField, SubBiome, SubBiomeID,
-    TerrainProfileID,
-};
+use sns_assets::{baseplates::{Biome, BiomeID, PartialClimateField, SubBiome, SubBiomeID}, worldshared::{BaseRuleID, NoiseField, TerrainProfileID}};
 use sns_core::prelude::*;
 use std::{cmp::Ordering, collections::HashMap};
 

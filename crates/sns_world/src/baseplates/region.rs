@@ -1,7 +1,7 @@
 use core::f32;
 use std::collections::HashMap;
 
-use sns_assets::prelude::{RegionArchetype,RegionArchetypeID};
+use sns_assets::baseplates::{RegionArchetype, RegionArchetypeID};
 use sns_core::prelude::*;
 
 use bevy_math::*;

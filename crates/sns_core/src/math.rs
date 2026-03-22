@@ -1,6 +1,6 @@
 use bevy_math::*;
 use simdnoise::NoiseBuilder;
-use sns_assets::prelude::NoiseField;
+use sns_assets::worldshared::NoiseField;
 #[inline]
 pub fn div_floor(a: i32, b: i32) -> i32 {
     let d = a / b;

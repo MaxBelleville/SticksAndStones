@@ -19,7 +19,7 @@
         "rule_type": {
             "type": "string"
         },
-        "child_id": {"asset_ref":"worldshared:BaseRule"}
+        "child_id": {"asset_ref":"worldshared:base_rule"}
     },
     "required": [
         "id",

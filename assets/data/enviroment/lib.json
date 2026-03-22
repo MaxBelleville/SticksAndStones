@@ -2,20 +2,21 @@
     "version": 1,
     "assets": [
         {
-            "asset_type": "enviroment:Preset",
+            "asset_type": "enviroment:preset",
             "schema": "presets/preset.schema.json",
             "files": ["presets/preset.json"]
         },
         {
-            "asset_type": "enviroment:PresetSegement",
-            "schema": "presets/segement.schema.json",
-            "files": ["presets/segement.json"]
-        },
-        {
-            "asset_type": "enviroment:Curve",
+            "asset_type": "enviroment:curve",
             "schema": "curve.schema.json",
             "files": ["curve.json"]
+        },
+        {
+            "asset_type": "enviroment:preset_segement",
+            "schema": "presets/segement.schema.json",
+            "files": ["presets/segement.json"]
         }
+    
     ],
     "settings": {
 

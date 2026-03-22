@@ -60,5 +60,4 @@ bytemuck = {workspace = true}
 
 sns_core = { path = "crates/sns_core" }
 sns_world = { path = "crates/sns_world" }
-sns_macros = { path = "crates/sns_macros" }
 sns_assets = { path = "crates/sns_assets" }

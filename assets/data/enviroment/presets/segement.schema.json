@@ -8,22 +8,28 @@
             "format": "namespaced"
         },
         "curve_id": {
-            "asset_ref": "enviroment:Curve"
+            "asset_ref": "enviroment:curve"
         },
         "start_id": {
-            "asset_ref": "enviroment:Preset"
+            "asset_ref": "enviroment:preset"
         },
         "end_id": {
-            "asset_ref": "enviroment:Preset"
+            "asset_ref": "enviroment:preset"
         },
-        "is_first": {
-            "type": "boolean"
+        "duration": {
+            "type": "array",
+            "items": {
+                "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
         }
     },
     "required": [
         "id",
         "curve_id",
         "start_id",
+        "duration",
         "end_id"
     ]
 }

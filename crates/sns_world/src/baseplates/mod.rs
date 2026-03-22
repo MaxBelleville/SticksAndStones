@@ -10,9 +10,8 @@ use crate::{
 };
 
 use bevy_math::*;
-use sns_assets::prelude::{
-    ClimateField, ClimateFieldID, NoiseField, NoiseFieldID, PartialClimateField,
-};
+
+use sns_assets::{baseplates::PartialClimateField, worldshared::{ClimateField, ClimateFieldID, NoiseField, NoiseFieldID}};
 use sns_core::prelude::*;
 
 /*

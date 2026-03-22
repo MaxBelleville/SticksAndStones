@@ -2,13 +2,13 @@ use bevy_math::*;
 use sns_macros::AssetDef;
 use super::{DefinedAsset,registry,metadata, AssetRef};
 
-#[derive(Default,AssetDef)]
-#[asset(type = "Curve", namespace = "enviroment")]
+#[derive(Default,AssetDef,Clone)]
+#[asset(namespace = "enviroment")]
 pub struct Curve {
     values: Vec<f32>,
 }
-#[derive(Default,AssetDef)]
-#[asset(type = "Preset", namespace = "enviroment")]
+#[derive(Default,AssetDef, Clone, Copy)]
+#[asset(namespace = "enviroment")]
 pub struct Preset {
     sun_color: Vec3,
     alpha_moon_color: Vec3,
@@ -18,8 +18,23 @@ pub struct Preset {
     mid_color: Vec3,
     zenith_color: Vec3,
 }
+impl Preset {
+    pub fn lerp(&self, other: &Self, lerp_t: f32) -> Self {
+        Self {
+            sun_color: self.sun_color.lerp(other.sun_color, lerp_t),
+            alpha_moon_color: self.alpha_moon_color.lerp(other.alpha_moon_color, lerp_t),
+            beta_moon_color: self.beta_moon_color.lerp(other.beta_moon_color, lerp_t),
+
+            zenith_color: self.zenith_color.lerp(other.zenith_color, lerp_t),
+            mid_color: self.mid_color.lerp(other.mid_color, lerp_t),
+            horizon_color: self.horizon_color.lerp(other.horizon_color, lerp_t),
+        }
+    }
+}
+
+
 #[derive(Default,AssetDef)]
-#[asset(type = "PresetSegement", namespace = "enviroment")]
+#[asset(namespace = "enviroment")]
 pub struct PresetSegement {
     #[asset_ref(Curve)]
     curve_id: CurveID,
@@ -27,5 +42,6 @@ pub struct PresetSegement {
     start_id: PresetID,
     #[asset_ref(Preset)]
     end_id: PresetID,
-    is_first: bool
+    duration: Vec2,
+
 }
