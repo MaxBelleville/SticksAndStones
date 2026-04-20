@@ -8,16 +8,15 @@ use bevy_skein::SkeinPlugin;
 use iyes_progress::ProgressPlugin;
 use leafwing_input_manager::prelude::*;
 
-use crate::renderer::RasterMaterial;
-
-
 mod ambassadors;
 mod net;
 mod player;
+mod renderer;
 mod ui;
 mod window;
 
-mod renderer;
+use net::ClientPlugin;
+use renderer::RasterMaterial;
 
 fn main() {
     App::new()
@@ -50,21 +49,17 @@ fn main() {
                     },
                     ..default()
                 }),
-            MaterialPlugin::<RasterMaterial>::default(),  
+            MaterialPlugin::<RasterMaterial>::default(),
             FrameTimeDiagnosticsPlugin::default(),
             window::WindowPlugin,
             SkeinPlugin::default(),
-       
             ui::UIPlugins,
             ProgressPlugin::<ui::ManagerState>::new()
                 .with_state_transition(ui::ManagerState::LoadingGame, ui::ManagerState::InGame),
-
-            net::client::ClientPlugin,
+            ClientPlugin,
             ambassadors::AmbassorPlugins,
-
             InputManagerPlugin::<player::Input>::default(),
             player::PlayerPlugin,
-            
             renderer::RendererPlugins,
         ))
         .add_systems(Update, ui::sync_manager_state)

@@ -1,2 +1,4 @@
 /target
 src/net/stdb_bindings
+.zed
+.vscode

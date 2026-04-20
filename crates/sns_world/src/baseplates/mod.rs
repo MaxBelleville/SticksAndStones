@@ -11,15 +11,18 @@ use crate::{
 
 use bevy_math::*;
 
-use sns_assets::{baseplates::PartialClimateField, worldshared::{ClimateField, ClimateFieldID, NoiseField, NoiseFieldID}};
+use sns_assets::{
+    baseplates::PartialClimateField,
+    worldshared::{ClimateField, ClimateFieldID, NoiseField, NoiseFieldID},
+};
 use sns_core::prelude::*;
 
 /*
-    What is a baseplate?
+    What is a base plate?
     The foundation of the world generation, which everything else stems off of.
-    Using biome, subbiome, region and climate baseplates we can sample a large area around the camera
-    Which will be used to determine the aproximate world geometry, as well as determine structures/features.
-    Baseplates are completely 2D, and using an ambassor link up to 3d brickhub/brick map terrain.
+    Using biome, sub biome, region and climate base plates we can sample a large area around the camera
+    Which will be used to determine the approximate world geometry, as well as determine structures/features.
+    Base plates are completely 2D, and using an ambassador link up to 3d brick hub/brick map terrain.
 */
 
 pub struct WorldPlate {
@@ -116,7 +119,9 @@ impl ClimatePipeline {
         climate_fields: &HashMap<ClimateFieldID, ClimateField>,
         noise_fields: &HashMap<NoiseFieldID, NoiseField>,
     ) -> ClimateSample {
-        let field = self.field_gen.sample(coord, seed, climate_fields,noise_fields);
+        let field = self
+            .field_gen
+            .sample(coord, seed, climate_fields, noise_fields);
         let region_sample = self.region_plate.sample(coord, seed);
         let region_id = region_sample.get_archetype_id();
         let region = self.region_plate.get_archetype(region_id).unwrap();
@@ -155,7 +160,8 @@ impl FieldGenerator {
             .expect("climate noise not found");
         let mut noise_val = sample_fbm_2d(&climate, coord, seed);
         let climate_weight = climate_fields
-            .get(self.noise_plate.climate_weight_id()).unwrap();
+            .get(self.noise_plate.climate_weight_id())
+            .unwrap();
 
         field = field + (climate_weight.clone() * noise_val);
 
@@ -164,7 +170,8 @@ impl FieldGenerator {
             .expect("region noise not found");
         noise_val = sample_fbm_2d(region, coord, seed);
         let region_weight = climate_fields
-            .get(self.noise_plate.region_weight_id()).unwrap();
+            .get(self.noise_plate.region_weight_id())
+            .unwrap();
 
         field = field + (region_weight.clone() * noise_val);
 
@@ -173,8 +180,8 @@ impl FieldGenerator {
             .expect("local noise not found");
         noise_val = sample_fbm_2d(local, coord, seed);
         let local_weight = climate_fields
-            .get(self.noise_plate.local_weight_id()).unwrap();
-
+            .get(self.noise_plate.local_weight_id())
+            .unwrap();
 
         field = field + (local_weight.clone() * noise_val);
 
@@ -202,7 +209,9 @@ impl<'a> GridSampler<ClimateSample> for ClimateGridSampler<'a> {
             grid_coord.y as f32 * self.grid_size,
         );
 
-        let mut samples = self.pipeline.sample(world_pos, seed, self.climate_fields,self.noise_fields);
+        let mut samples =
+            self.pipeline
+                .sample(world_pos, seed, self.climate_fields, self.noise_fields);
         self.base_rules.apply_rules(samples.mut_biome_samples());
         samples
     }
