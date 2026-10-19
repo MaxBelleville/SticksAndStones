@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::{
     prelude::{BaseRules, ClimateSample, GridSampleCache, GridSampler},
-    structs::{LocalPlateSample, NoiseBasisPlate},
+    structs::{LocalSample, NoiseBasisPlate},
 };
 
 use bevy_math::*;
@@ -27,9 +27,8 @@ use sns_core::prelude::*;
 
 pub struct WorldPlate {
     climate_plate: ClimatePlate,
-    //Should probably move local cache to terrain plate.
+    local_plate: LocalPlate,
     terrain_plate: terrain::Plate,
-    local_cache: GridSampleCache<LocalPlateSample>,
     noise_fields: HashMap<NoiseFieldID, NoiseField>,
     climate_fields: HashMap<ClimateFieldID, ClimateField>,
     base_rules: BaseRules,
@@ -38,8 +37,8 @@ impl Default for WorldPlate {
     fn default() -> Self {
         Self {
             climate_plate: ClimatePlate::default(),
+            local_plate: LocalPlate::default(),
             terrain_plate: terrain::Plate::default(),
-            local_cache: GridSampleCache::new(128, 3.0),
             noise_fields: HashMap::new(),
             climate_fields: HashMap::new(),
             base_rules: BaseRules::default(),
@@ -59,11 +58,43 @@ impl WorldPlate {
     }
 
     pub fn local_update(&mut self, world_pos: Vec2, seed: i32) {
+        self.local_plate.local_update(
+            world_pos,
+            seed,
+            &self.climate_plate.climate_cache,
+            &self.terrain_plate,
+            &self.base_rules,
+            &self.noise_fields,
+        );
+    }
+}
+
+pub struct LocalPlate {
+    local_cache: GridSampleCache<LocalSample>,
+}
+impl Default for LocalPlate {
+    fn default() -> Self {
+        Self {
+            local_cache: GridSampleCache::new(128, 3.0),
+        }
+    }
+}
+
+impl LocalPlate {
+    pub fn local_update(
+        &mut self,
+        world_pos: Vec2,
+        seed: i32,
+        climate_cache: &GridSampleCache<ClimateSample>,
+        terrain_plate: &terrain::Plate,
+        base_rules: &BaseRules,
+        noise_fields: &HashMap<NoiseFieldID, NoiseField>,
+    ) {
         let mut sampler = LocalPlateSampler {
-            climate_cache: &self.climate_plate.climate_cache,
-            terrain_plate: &self.terrain_plate,
-            base_rules: &self.base_rules,
-            noise_fields: &self.noise_fields,
+            climate_cache,
+            terrain_plate,
+            base_rules,
+            noise_fields,
             grid_size: self.local_cache.grid_size(),
         };
 
@@ -225,25 +256,13 @@ pub struct LocalPlateSampler<'a> {
 }
 impl<'a> LocalPlateSampler<'a> {
     fn interpolate(&self, world_pos: Vec2) -> ClimateSample {
-        //Covert to climate grid coords and shift to be in the middle mutiple cells.
-        let climate_grid_coord = self.climate_cache.pos_reduce_to_cell(world_pos) - 0.5;
-        let val0 = climate_grid_coord.floor().as_ivec2();
-        let val1 = val0 + 1;
-        let tval = climate_grid_coord - val0.as_vec2();
-
-        let cell00 = self.climate_cache.cell(val0);
-        let cell01 = self.climate_cache.cell(IVec2::new(val0.x, val1.y));
-        let cell10 = self.climate_cache.cell(IVec2::new(val1.x, val0.y));
-        let cell11 = self.climate_cache.cell(val1);
-
-        let interp_cell0 = cell00.lerp(cell10, tval.x);
-        let interp_cell1 = cell01.lerp(cell11, tval.x);
-        interp_cell0.lerp(&interp_cell1, tval.y)
+        self.climate_cache
+            .interpolate(world_pos, ClimateSample::lerp)
     }
 }
 
-impl<'a> GridSampler<LocalPlateSample> for LocalPlateSampler<'a> {
-    fn sample_cell(&mut self, grid_coord: IVec2, seed: i32) -> LocalPlateSample {
+impl<'a> GridSampler<LocalSample> for LocalPlateSampler<'a> {
+    fn sample_cell(&mut self, grid_coord: IVec2, seed: i32) -> LocalSample {
         let base_pos = grid_coord.as_vec2() * self.grid_size;
 
         let jitter = (hash_vec2(grid_coord, seed) - 0.5) * self.grid_size;
@@ -261,78 +280,19 @@ impl<'a> GridSampler<LocalPlateSample> for LocalPlateSampler<'a> {
 
 pub trait ClimateInterpolator {
     fn lerp(&self, other: &Self, t: f32) -> Self;
-    fn lerp_biomes(&self, other: &Vec<biome::Sample>, t: f32) -> Vec<biome::Sample>;
 }
 
 impl ClimateInterpolator for ClimateSample {
     fn lerp(&self, other: &Self, t: f32) -> Self {
         let field = self.field().lerp(&other.field(), t);
-        let curr_samples = self.lerp_biomes(other.biome_samples(), t);
+
+        let biome_samples = biome::merge_lerp(self.biome_samples(), other.biome_samples(), t);
+
         Self::new(
             field,
-            curr_samples,
-            self.archetype_id(),
+            biome_samples,
+            self.archetype_id(), // or resolve if needed
             self.base_rule_ids().clone(),
         )
-    }
-
-    fn lerp_biomes(&self, other: &Vec<biome::Sample>, t: f32) -> Vec<biome::Sample> {
-        let a = self.biome_samples();
-        let b = other;
-
-        let mut result = Vec::with_capacity(a.len() + b.len());
-
-        let mut i = 0;
-        let mut j = 0;
-
-        while i < a.len() && j < b.len() {
-            let a_id = a[i].id().0;
-            let b_id = b[j].id().0;
-
-            if a_id == b_id {
-                let biome = a[i].lerp(&b[j], t);
-                if biome.weight() > 0.001 {
-                    result.push(biome);
-                }
-                i += 1;
-                j += 1;
-            } else if a_id < b_id {
-                let mut faded = a[i].clone();
-                faded.set_weight(faded.weight() * (1.0 - t));
-                if faded.weight() > 0.001 {
-                    result.push(faded);
-                }
-                i += 1;
-            } else {
-                let mut faded = b[j].clone();
-                faded.set_weight(faded.weight() * t);
-                if faded.weight() > 0.001 {
-                    result.push(faded);
-                }
-                j += 1;
-            }
-        }
-
-        // Remaining A
-        while i < a.len() {
-            let mut faded = a[i].clone();
-            faded.set_weight(faded.weight() * (1.0 - t));
-            if faded.weight() > 0.001 {
-                result.push(faded);
-            }
-            i += 1;
-        }
-
-        // Remaining B
-        while j < b.len() {
-            let mut faded = b[j].clone();
-            faded.set_weight(faded.weight() * t);
-            if faded.weight() > 0.001 {
-                result.push(faded);
-            }
-            j += 1;
-        }
-
-        result
     }
 }

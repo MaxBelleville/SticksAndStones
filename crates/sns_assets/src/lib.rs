@@ -1,37 +1,93 @@
-
 use std::fmt::Display;
-use std::{any::TypeId, hash::Hash};
 use std::sync::Arc;
+use std::{any::TypeId, hash::Hash};
 
+use bevy_log::info;
+use jsonschema::Validator;
 use serde::{Deserialize, Deserializer};
+use serde_json::Value;
+use sns_macros::MakeDefinedAsset;
 use std::fs;
 use std::path::{Path, PathBuf};
-use jsonschema::Validator;
-use serde_json::Value;
 
-pub mod enviroment;
-pub mod worldshared;
-pub mod registry;
 pub mod baseplates;
+pub mod environment;
 pub mod metadata;
+pub mod registry;
 mod validators;
-pub trait DefinedAsset: Sized + 'static {
-    type ID: Eq + Hash + From<u32> + Into<u32> + Copy;
+pub mod worldshared;
+
+pub trait DefinedAsset: Sized {
+    type ID: Ord + Eq + Hash + From<u32> + Into<u32> + Copy;
     const TYPE: &'static str;
     const NAMESPACE: &'static str;
-    
+
+    fn load_definition(
+        registries: &mut registry::DefinedRegistrySystem,
+        value: serde_json::Value,
+    ) -> Result<(), String>;
+    fn current_ref() -> AssetRef;
+}
+
+#[derive(Default, MakeDefinedAsset)]
+#[asset(namespace = "core", type = "enums")]
+pub struct EnumDefines {
+    values: Vec<String>,
+}
+
+#[derive(Default, MakeDefinedAsset)]
+#[asset(namespace = "core", type = "tags")]
+pub struct TagDefines {
+    values: Vec<String>,
+}
+
+pub trait StaticAsset: Sized + 'static {
+    type ID: Ord + Eq + Hash + From<u32> + Into<u32> + Copy;
+    const TYPE: &'static str;
+    const NAMESPACE: &'static str;
+
     fn load_asset(
         registries: &mut registry::RegistrySystem,
+        defs: &registry::DefinedRegistrySystem,
         value: serde_json::Value,
-    )->Result<(),String>;
+    ) -> Result<(), String>;
     fn dependencies() -> Vec<TypeId>;
     fn meta() -> metadata::Meta;
     fn current_ref() -> AssetRef;
-    fn visit_asset_refs<F:  FnMut(TypeId, u32)>(&self, visitor: F);
+    fn visit_asset_refs<F: FnMut(TypeId, u32)>(&self, visitor: F);
 }
 
+/// A reference to a defined enum with a specific bitflag value
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EnumRef {
+    /// Which defined enum this refers to (e.g., "rule_flag:region")
+    pub id: EnumDefinesID, // Index into registry, OR...
+    /// The bitflag value for this instance
+    pub bits: u32,
+}
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug,Default)]
+impl EnumRef {
+    pub fn new(id: EnumDefinesID, bits: u32) -> Self {
+        Self { id, bits }
+    }
+
+    /// Check if a specific variant is set (by index)
+    pub fn has_index(&self, index: u8) -> bool {
+        self.bits & (1u32 << index) != 0
+    }
+
+    /// Get the raw bitflag value
+    pub fn as_u32(&self) -> u32 {
+        self.bits
+    }
+
+    /// Iterate all set bit indices
+    pub fn iter_set_bits(&self) -> impl Iterator<Item = u8> {
+        (0..32).filter(move |i| self.has_index(*i))
+    }
+}
+
+#[derive(Hash, Eq, PartialEq, Clone, Debug, Default)]
 pub struct AssetRef {
     pub namespace: Arc<str>,
     pub name: Arc<str>,
@@ -75,7 +131,6 @@ impl<'de> Deserialize<'de> for AssetRef {
         })
     }
 }
-  
 
 pub trait IterableRef {
     type Item;
@@ -83,7 +138,7 @@ pub trait IterableRef {
     fn iter_val(self) -> std::vec::IntoIter<Self::Item>;
 }
 
-pub trait IterableMut {
+pub trait IterableRefMut {
     type Item;
     fn iter_mut(self) -> std::vec::IntoIter<(&'static str, Self::Item)>;
     fn iter_mut_val(self) -> std::vec::IntoIter<Self::Item>;
@@ -93,6 +148,7 @@ pub trait IterableMut {
 pub struct Libraries {
     libraries: Vec<Library>,
     registry: registry::RegistrySystem,
+    defs: registry::DefinedRegistrySystem,
 }
 impl Libraries {
     pub fn registry(&self) -> &registry::RegistrySystem {
@@ -100,6 +156,9 @@ impl Libraries {
     }
     pub fn libraries(&self) -> &Vec<Library> {
         &self.libraries
+    }
+    pub fn defs(&self) -> &registry::DefinedRegistrySystem {
+        &self.defs
     }
 }
 
@@ -135,9 +194,12 @@ pub struct LibraryManifest {
     assets: Vec<AssetContainer>,
 
     #[serde(default)]
-   settings: Option<serde_json::Value>,
+    defined_assets: Vec<DefinedAssetContainer>,
+
+    #[serde(default)]
+    settings: Option<serde_json::Value>,
 }
-#[derive(Default,Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct AssetContainer {
     asset_type: AssetRef,
     schema: String,
@@ -149,16 +211,34 @@ pub struct AssetContainer {
     folders: Vec<String>,
 }
 
+#[derive(Default, Deserialize)]
+pub struct DefinedAssetContainer {
+    asset_type: AssetRef,
 
-pub fn load_libraies(root: &Path)->Libraries {
+    #[serde(default)]
+    enum_files: Vec<String>,
+
+    #[serde(default)]
+    tag_files: Vec<String>,
+}
+
+pub fn load_libraies(root: &Path) -> Libraries {
     let schema_path = root.join("lib.schema.json");
+    info!("{}/lib.schema.json", root.to_str().unwrap_or(""));
     let schema_validator = validators::build_validator(&schema_path);
     let mut libraries = Vec::new();
+
     load_library_recursive(&root, &schema_validator, &mut libraries).unwrap();
 
     let mut registry = registry::RegistrySystem::default();
-    load_assets(&libraries, &mut registry);
-    Libraries { libraries: libraries, registry: registry }
+    let mut defs = registry::DefinedRegistrySystem::default();
+    load_def(&root, &libraries, &mut defs);
+    load_assets(&libraries, &mut registry, &defs);
+    Libraries {
+        libraries: libraries,
+        registry: registry,
+        defs: defs,
+    }
 }
 ///depth-first order libraries (child first)
 pub fn load_library_recursive(
@@ -166,34 +246,35 @@ pub fn load_library_recursive(
     schema_validator: &Validator,
     libraries: &mut Vec<Library>,
 ) -> Result<(), String> {
-    let lib_path = path.join("lib.json");
+    let lib_path = &path.join("lib.json");
 
     let Ok(text) = fs::read_to_string(lib_path) else {
-        return Err("Could not read file".into());
+        return Err(format!(
+            "Could not read file: {}",
+            lib_path.to_string_lossy()
+        ));
     };
-    let json: Value = serde_json::from_str(&text)
-        .map_err(|_| "Could not parse json")?;
+    let json: Value = serde_json::from_str(&text).map_err(|_| "Could not parse json")?;
 
     if !schema_validator.is_valid(&json) {
         return Err("Invalid json schema".into());
     }
 
-    let manifest: LibraryManifest = serde_json::from_value(json)
-        .map_err(|_| "Invalid manifest structure")?;
-    
+    let manifest: LibraryManifest =
+        serde_json::from_value(json).map_err(|_| "Invalid manifest structure")?;
+
     let mut library = Library::new(path, manifest);
-    
+
     let namespace = path
-    .file_name()
-    .and_then(|n| n.to_str())
-    .ok_or("Invalid library path")?;
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("Invalid library path")?;
 
     if library.manifest.namespace.is_none() {
         library.manifest.namespace = Some(namespace.to_string());
     }
 
     for lib in &library.manifest.libraries {
-
         let sub_path = path.join(lib);
 
         load_library_recursive(&sub_path, schema_validator, libraries)?;
@@ -204,12 +285,44 @@ pub fn load_library_recursive(
     Ok(())
 }
 
-pub fn load_assets(libraries: &Vec<Library>, registry: &mut registry::RegistrySystem) {
+pub fn load_def(root: &Path, libraries: &Vec<Library>, def: &mut registry::DefinedRegistrySystem) {
+    info!("{}/enum.schema.json", root.to_str().unwrap_or(""));
+    let enum_schema = &root.join("enum.schema.json");
+    let enum_schema_validator = validators::build_validator(enum_schema);
+
     for library in libraries {
         let root = &library.root;
-        for container in &library.manifest.assets {  
-            let schema_file = root.join(&container.schema);
+        for container in &library.manifest.defined_assets {
+            for enums in &container.enum_files {
+                let file = root.join(enums);
 
+                let Ok(text) = fs::read_to_string(&file) else {
+                    continue;
+                };
+
+                let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+                    continue;
+                };
+
+                if let Err(e) =
+                    def.load_by_type(&container.asset_type, &enum_schema_validator, json)
+                {
+                    eprintln!("Failed to load {:?}: {}", file, e);
+                }
+            }
+        }
+    }
+}
+
+pub fn load_assets(
+    libraries: &Vec<Library>,
+    registry: &mut registry::RegistrySystem,
+    defs: &registry::DefinedRegistrySystem,
+) {
+    for library in libraries {
+        let root = &library.root;
+        for container in &library.manifest.assets {
+            let schema_file = root.join(&container.schema);
             let mut asset_files = Vec::new();
             for files in &container.files {
                 let file_path = root.join(files);
@@ -224,7 +337,7 @@ pub fn load_assets(libraries: &Vec<Library>, registry: &mut registry::RegistrySy
             let asset_schema_validator = validators::build_validator(&schema_file);
 
             for file in asset_files {
-                 let Ok(text) = fs::read_to_string(&file) else {
+                let Ok(text) = fs::read_to_string(&file) else {
                     continue;
                 };
 
@@ -232,21 +345,19 @@ pub fn load_assets(libraries: &Vec<Library>, registry: &mut registry::RegistrySy
                     continue;
                 };
                 //print json value
-      
+
                 if let Err(e) = registry.load_by_type(
                     &container.asset_type,
+                    defs,
                     &asset_schema_validator,
-                    json
+                    json,
                 ) {
                     eprintln!("Failed to load {:?}: {}", file, e);
                 }
-                            
             }
-
         }
     }
 }
-
 
 pub fn collect_folder_assets(folder: PathBuf) -> Vec<PathBuf> {
     walkdir::WalkDir::new(folder)

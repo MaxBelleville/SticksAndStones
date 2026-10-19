@@ -1,68 +1,96 @@
 {
-    "type": "object",
-    "title": "Library",
-    "description": "Used for discovery phase of data loader",
-    "properties": {
-        "version": {
-            "type": "number"
-        },
-        "namespace": {
-            "type": "string"
-        },
-        "libraries": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            },
-            "minItems": 1
-        },
-        "assets": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "type": {
-                        "asset_type": "string",
-                        "format": "namespaced"
-                    },
-                    "schema": {
-                        "type": "string"
-                    },
-                    "files": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "minItems": 1
-                    },
-                    "folders": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "minItems": 1
-                    }
-                }
-            },
-            "required": [
-                "type",
-                "schema"
-            ],
-            "anyOf": [
-                {
-                    "required": [
-                        "files"
-                    ]
-                },
-                {
-                    "required": [
-                        "folders"
-                    ]
-                }
-            ]
-        },
-        "settings": {
-            "type": "object"
-        }
-    }
+	"type": "object",
+	"title": "Library",
+	"description": "Used for discovery phase of data loader",
+	"properties": {
+		"version": {
+			"type": "number"
+		},
+		"namespace": {
+			"type": "string"
+		},
+		"libraries": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			},
+			"minItems": 1
+		},
+		"assets": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"type": {
+						"asset_type": "string",
+						"format": "namespaced"
+					},
+					"schema": {
+						"type": "string"
+					},
+					"files": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"minItems": 1
+					},
+					"folders": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"minItems": 1
+					}
+				}
+			},
+			"required": ["type", "schema"],
+			"anyOf": [
+				{
+					"required": ["files"]
+				},
+				{
+					"required": ["folders"]
+				}
+			]
+		},
+		"defined_assets": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"type": {
+						"asset_type": "string",
+						"format": "namespaced"
+					},
+					"enum_files": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"minItems": 1
+					},
+					"tag_files": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"minItems": 1
+					}
+				}
+			},
+			"required": ["type"],
+			"anyOf": [
+				{
+					"required": ["enum_files"]
+				},
+				{
+					"required": ["tag_files"]
+				}
+			]
+		},
+		"settings": {
+			"type": "object"
+		}
+	}
 }

@@ -1,0 +1,20 @@
+{
+	"version": 1,
+	"assets": [
+		{
+			"asset_type": "environment:preset",
+			"schema": "presets/preset.schema.json",
+			"files": ["presets/preset.json"]
+		},
+		{
+			"asset_type": "environment:curve",
+			"schema": "curve.schema.json",
+			"files": ["curve.json"]
+		},
+		{
+			"asset_type": "environment:preset_segement",
+			"schema": "presets/segement.schema.json",
+			"files": ["presets/segement.json"]
+		}
+	]
+}

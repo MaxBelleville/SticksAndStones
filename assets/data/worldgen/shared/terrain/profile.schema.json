@@ -1,26 +1,18 @@
 {
-    "type": "object",
-    "title": "Terrain Profile",
-    "description": "Used in the conversion of 2d baseplates to 3d terrain",
-    "properties": {
-        "id": {
-            "type": "string",
-            "format": "namespaced"
-        },
-        "base_noise": {"asset_ref":"worldshared:noise_field"},
-        "height_offset": { "type": "number"},
-        "height_variance": { "type": "number"},
-        "roughness": {"type": "number"},
-        "erosion_strength": {"type": "number"},
-        "density_curve_id": {"asset_ref": "worldshared:density_curve"}
-
-    },
-    "required": [
-        "id",
-        "base_noise",
-        "height_offset",
-        "height_variance",
-        "roughness",
-        "erosion_strength"
-    ]
+	"type": "object",
+	"title": "Terrain Profile",
+	"description": "Used in the conversion of 2d baseplates to 3d terrain",
+	"properties": {
+		"id": {
+			"type": "string",
+			"format": "namespaced"
+		},
+		"base_noise": { "asset_ref": "worldshared:noise_field" },
+		"height_offset": { "type": "number" },
+		"height_variance": { "type": "number" },
+		"roughness": { "type": "number" },
+		"erosion_strength": { "type": "number" },
+		"density_curve_id": { "asset_ref": "worldshared:density_curve" }
+	},
+	"required": ["id", "base_noise", "height_offset", "height_variance", "roughness", "erosion_strength"]
 }

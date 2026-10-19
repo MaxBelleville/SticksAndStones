@@ -1,10 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy_math::*;
-use sns_assets::{baseplates::{NoiseBasis, RegionArchetypeID}, worldshared::{BaseRule, BaseRuleID, ClimateField, ClimateFieldID, DensityCurveID, NoiseFieldID}};
+use sns_assets::{
+    baseplates::{NoiseBasis, RegionArchetypeID},
+    worldshared::{
+        BaseRule, BaseRuleID, ClimateField, ClimateFieldID, DensityCurveID, NoiseFieldID,
+    },
+};
 
-use crate::prelude::biome;
-
+use crate::prelude::biome::{self, WeightedSample};
 
 #[derive(Default)]
 pub struct NoiseBasisPlate {
@@ -76,7 +80,7 @@ impl BaseRules {
 }
 
 #[derive(Default)]
-pub struct LocalPlateSample {
+pub struct LocalSample {
     field: ClimateField,
 
     height_mean: f32,
@@ -88,7 +92,7 @@ pub struct LocalPlateSample {
 
     base_rule_ids: Vec<BaseRuleID>,
 }
-impl LocalPlateSample {
+impl LocalSample {
     pub fn insert_first_density_id(&mut self, density_curve_id: &Option<DensityCurveID>) {
         //If self.density_curve_id doesn't exists and parameter density_curve_id exists add
         if self.density_curve_id.is_none() && density_curve_id.is_some() {
@@ -200,6 +204,25 @@ impl<T> GridSampleCache<T> {
     }
     pub fn mut_values(&mut self) -> Vec<&mut T> {
         self.grid.values_mut().collect()
+    }
+
+    pub fn interpolate<F>(&self, coord: Vec2, lerp: F) -> T
+    where
+        F: Fn(&T, &T, f32) -> T,
+    {
+        let climate_grid_coord = self.pos_reduce_to_cell(coord) - 0.5;
+        let val0 = climate_grid_coord.floor().as_ivec2();
+        let val1 = val0 + 1;
+        let tval = climate_grid_coord - val0.as_vec2();
+
+        let cell00 = self.cell(val0);
+        let cell01 = self.cell(IVec2::new(val0.x, val1.y));
+        let cell10 = self.cell(IVec2::new(val1.x, val0.y));
+        let cell11 = self.cell(val1);
+
+        let interp_cell0 = &lerp(cell00, cell10, tval.x);
+        let interp_cell1 = &lerp(cell01, cell11, tval.x);
+        lerp(interp_cell0, interp_cell1, tval.y)
     }
 
     pub fn update<S: GridSampler<T>>(&mut self, sampler: &mut S, world_pos: Vec2, seed: i32) {

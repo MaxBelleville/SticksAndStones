@@ -1,10 +1,4 @@
 {
-    "version": 1,
-    "libraries": [
-        "shared",
-        "baseplates"
-    ],
-    "settings": {
-        
-    }
+	"version": 1,
+	"libraries": ["shared", "baseplates"]
 }

@@ -1,18 +1,21 @@
-use std::any::{TypeId};
-use std::collections::HashMap;
-use std::hash::Hash;
-use sns_macros::register_assets;
+use super::{
+    AssetRef, DefinedAsset, EnumDefines, StaticAsset, TagDefines, environment, metadata,
+    worldshared,
+};
+use crate::baseplates;
 use jsonschema::Validator;
 use serde_json::Value;
-use crate::baseplates;
+use sns_macros::{register_assets, register_defined_assets};
+use std::any::TypeId;
+use std::collections::HashMap;
+use std::hash::Hash;
 
-use super::{enviroment,metadata, worldshared, DefinedAsset, AssetRef};
-
+register_defined_assets!(EnumDefines, TagDefines);
 
 register_assets!(
-    enviroment::Curve,
-    enviroment::Preset,
-    enviroment::PresetSegement,
+    environment::Curve,
+    environment::Preset,
+    environment::PresetSegement,
     worldshared::NoiseField,
     worldshared::BaseRule,
     worldshared::TerrainProfile,
@@ -49,7 +52,6 @@ impl<ID: Eq + Hash + From<u32> + Into<u32> + Copy, Asset> AssetRegistry<ID, Asse
         self.assets.get(id)
     }
 
-
     pub fn asset_mut(&mut self, id: ID) -> Option<&mut Asset> {
         self.assets.get_mut(id)
     }
@@ -75,14 +77,11 @@ impl<ID: Eq + Hash + From<u32> + Into<u32> + Copy, Asset> AssetRegistry<ID, Asse
     pub fn assets(&self) -> &Vec<Option<Asset>> {
         self.assets.assets()
     }
-    
-
 
     pub fn resolve(&self, id: ID) -> &AssetRef {
         self.glossary.resolve(id)
     }
 }
-
 
 #[derive(Default, Debug)]
 pub struct AssetStorage<ID, Asset> {
@@ -117,7 +116,7 @@ impl<ID: Into<u32> + From<u32> + Copy, Asset> AssetStorage<ID, Asset> {
     pub fn len(&self) -> usize {
         self.assets.len()
     }
-    
+
     pub fn contains(&self, id: ID) -> bool {
         self.assets
             .get(id.into() as usize)

@@ -1,0 +1,8 @@
+{
+	"defined_assets": [
+		{
+			"asset_type": "core:enums",
+			"enum_files": ["rule_flag.json"]
+		}
+	]
+}

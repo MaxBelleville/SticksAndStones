@@ -1,10 +1,9 @@
+use super::{AssetRef, StaticAsset, metadata, registry, worldshared};
 use bevy_math::*;
 use serde::Deserialize;
-use sns_macros::{AssetDef, FieldMath};
-use super::{DefinedAsset,AssetRef, registry, metadata, worldshared,IterableMut,IterableRef};
+use sns_macros::{FieldMath, MakeAsset};
 
-
-#[derive(Default, AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "baseplates")]
 pub struct NoiseBasis {
     #[asset_ref(worldshared::NoiseField)]
@@ -13,18 +12,18 @@ pub struct NoiseBasis {
     weight_id: worldshared::ClimateFieldID,
 }
 
-#[derive(Default,  AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "baseplates")]
 pub struct RegionArchetype {
     #[asset_ref(worldshared::ClimateField)]
-    bias_id:  worldshared::ClimateFieldID,
+    bias_id: worldshared::ClimateFieldID,
     #[asset_ref(worldshared::ClimateField)]
     max_delta_id: Option<worldshared::ClimateFieldID>,
     #[asset_ref(worldshared::BaseRule)]
     base_rule_ids: Vec<worldshared::BaseRuleID>,
 }
 
-#[derive(Default,  AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "baseplates")]
 pub struct Biome {
     // Climate preference
@@ -40,7 +39,7 @@ pub struct Biome {
     base_rule_ids: Vec<worldshared::BaseRuleID>,
 }
 
-#[derive(Default,  AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "baseplates")]
 pub struct SubBiome {
     #[asset_ref(Biome)]
@@ -56,12 +55,15 @@ pub struct SubBiome {
 #[derive(Default, Copy, Clone, FieldMath, Deserialize)]
 
 pub struct PartialClimateField {
-   temperature: f32,
-   moisture: f32,
+    temperature: f32,
+    moisture: f32,
 }
 impl PartialClimateField {
     pub fn new(temperature: f32, moisture: f32) -> Self {
-        Self { temperature, moisture }
+        Self {
+            temperature,
+            moisture,
+        }
     }
     pub fn get_temperature(&self) -> f32 {
         self.temperature
@@ -78,4 +80,3 @@ impl From<worldshared::ClimateField> for PartialClimateField {
         }
     }
 }
-

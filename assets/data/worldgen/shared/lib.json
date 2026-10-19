@@ -1,32 +1,30 @@
 {
-     "assets": [
-        {
-            "asset_type": "worldshared:noise_field",
-            "schema": "fields/noise.schema.json",
-            "files": ["fields/noise.json"]
-        },
-        {
-            "asset_type": "worldshared:climate_field",
-            "schema": "fields/climate.schema.json",
-            "files": ["fields/climate.json"]
-        },
-        {
-            "asset_type": "worldshared:base_rule",
-            "schema": "base_rule.schema.json",
-            "files": ["base_rule.json"]
-        },
-        {
-            "asset_type": "worldshared:terrain_profile",
-            "schema": "terrain/profile.schema.json",
-            "files": ["terrain/profile.json"]
-        },
-        {
-            "asset_type": "worldshared:density_curve",
-            "schema": "density_curve.schema.json",
-            "files": ["density_curve.json"]
-        }
-    ],
-    "settings": {
-       
-    }
+	"assets": [
+		{
+			"asset_type": "worldshared:noise_field",
+			"schema": "fields/noise.schema.json",
+			"files": ["fields/noise.json"]
+		},
+		{
+			"asset_type": "worldshared:climate_field",
+			"schema": "fields/climate.schema.json",
+			"files": ["fields/climate.json"]
+		},
+		{
+			"asset_type": "worldshared:base_rule",
+			"schema": "base_rule.schema.json",
+			"files": ["base_rule.json"]
+		},
+		{
+			"asset_type": "worldshared:terrain_profile",
+			"schema": "terrain/profile.schema.json",
+			"files": ["terrain/profile.json"]
+		},
+		{
+			"asset_type": "worldshared:density_curve",
+			"schema": "density_curve.schema.json",
+			"files": ["density_curve.json"]
+		}
+	],
+	"settings": {}
 }

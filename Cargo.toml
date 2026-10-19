@@ -27,11 +27,12 @@ members = ["crates/*"]
 
 
 [workspace.dependencies]
+bevy_log = {version = "0.18.1"}
 bevy_math = {version="0.18.1", features = ["serialize"]}
 bytemuck = "1.24.0"
 smallvec = "1.15.1"
-bitflags = {version = "2.10.0", features = ["bytemuck"]}
 serde = {version="1.0.228", features = ["derive"]}
+bitflags = {version = "2.10.0", features = ["bytemuck","serde"]}
 serde_json = "1.0.149"
 jsonschema = "0.45.0"
 nonmax = "0.5.5"

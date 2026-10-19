@@ -1,10 +1,5 @@
 {
-    "version": 1,
-    "namespace": "root",
-    "libraries": [
-        "enviroment",
-        "worldgen"
-    ],
-    "settings": {
-    }
+	"version": 1,
+	"namespace": "root",
+	"libraries": ["environment", "worldgen", "defines"]
 }

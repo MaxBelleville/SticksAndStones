@@ -3,8 +3,6 @@ use bytemuck::NoUninit;
 use std::marker::PhantomData;
 use std::mem::size_of;
 
-
-
 pub struct LinearAllocator<T> {
     storage: Vec<T>,
 }

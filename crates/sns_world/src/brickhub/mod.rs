@@ -10,7 +10,7 @@ mod scheduler;
 use std::collections::HashMap;
 
 use bevy_math::*;
-use sns_core::prelude::{GpuDevice, Range};
+use sns_core::prelude::GpuDevice;
 
 /*
     What is a brick hub?
@@ -167,7 +167,6 @@ impl BrickHub {
             .expect("allocator and cell map out of sync");
     }
 
-    
     pub fn flush(&mut self, gpu: &dyn GpuDevice) {
         // ---- Phase 1: Collect CPU deltas
         let batch = self.collect_device_batch();
@@ -188,11 +187,10 @@ impl BrickHub {
             .flush_deltas(batch, &self.cells, &self.allocator, &mut self.buffers, gpu);
     }
 
-
     fn collect_device_batch(&mut self) -> device::DeltaBatch {
         let mut batch = device::DeltaBatch::default();
 
-        for  (&id,cell) in self.cells.iter_mut() {
+        for (&id, cell) in self.cells.iter_mut() {
             batch.take_and_push(id, cell.get_delta_mut());
         }
 

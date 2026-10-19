@@ -2,7 +2,10 @@ use bevy_math::*;
 
 use crate::{SUBBIOME_OFFSET_SCALE, WEIGHT_EPSILON};
 
-use sns_assets::{baseplates::{Biome, BiomeID, PartialClimateField, SubBiome, SubBiomeID}, worldshared::{BaseRuleID, NoiseField, TerrainProfileID}};
+use sns_assets::{
+    baseplates::{Biome, BiomeID, PartialClimateField, SubBiome, SubBiomeID},
+    worldshared::{BaseRuleID, NoiseField, TerrainProfileID},
+};
 use sns_core::prelude::*;
 use std::{cmp::Ordering, collections::HashMap};
 
@@ -96,11 +99,43 @@ pub struct Sample {
     base_rule_ids: Vec<BaseRuleID>,
     sub_sample: Vec<SubSample>,
 }
+impl WeightedSample for Sample {
+    type Id = BiomeID;
 
-impl Sample {
-    pub fn id(&self) -> BiomeID {
+    fn id(&self) -> Self::Id {
         self.id
     }
+    fn weight(&self) -> f32 {
+        self.weight
+    }
+    fn set_weight(&mut self, w: f32) {
+        self.weight = w;
+    }
+    fn lerp(&self, other: &Self, t: f32) -> Self {
+        let weight = lerp(self.weight, other.weight, t);
+
+        let sub_sample = merge_lerp(&self.sub_sample, &other.sub_sample, t);
+
+        Sample {
+            id: self.id,
+            weight: weight,
+            terrain_profile_id: self.terrain_profile_id,
+            base_rule_ids: self.base_rule_ids.clone(),
+            sub_sample,
+        }
+    }
+    fn scaled(&self, w: f32) -> Self {
+        Sample {
+            id: self.id,
+            weight: w,
+            terrain_profile_id: self.terrain_profile_id,
+            base_rule_ids: self.base_rule_ids.clone(),
+            sub_sample: self.sub_sample.clone(),
+        }
+    }
+}
+
+impl Sample {
     pub fn terrain_profile_id(&self) -> TerrainProfileID {
         self.terrain_profile_id
     }
@@ -111,28 +146,11 @@ impl Sample {
         &mut self.base_rule_ids
     }
 
-    pub fn weight(&self) -> f32 {
-        self.weight
-    }
     pub fn sub_sample(&self) -> &Vec<SubSample> {
         &self.sub_sample
     }
     pub fn mut_sub_sample(&mut self) -> &mut Vec<SubSample> {
         &mut self.sub_sample
-    }
-
-    pub fn set_weight(&mut self, weight: f32) {
-        self.weight = weight;
-    }
-    pub fn lerp(&self, other: &Self, t: f32) -> Self {
-        let sub_sample = SubSample::lerp(&self.sub_sample, &other.sub_sample, t);
-        Self {
-            id: self.id,
-            terrain_profile_id: self.terrain_profile_id,
-            weight: lerp(self.weight, other.weight, t),
-            sub_sample,
-            base_rule_ids: self.base_rule_ids.clone(),
-        }
     }
 }
 
@@ -144,16 +162,44 @@ pub struct SubSample {
     terrain_profile_id: Option<TerrainProfileID>,
     base_rule_ids: Vec<BaseRuleID>,
 }
-impl SubSample {
-    pub fn id(&self) -> SubBiomeID {
+
+impl WeightedSample for SubSample {
+    type Id = SubBiomeID;
+
+    fn id(&self) -> Self::Id {
         self.id
     }
+    fn weight(&self) -> f32 {
+        self.weight
+    }
+    fn set_weight(&mut self, w: f32) {
+        self.weight = w;
+    }
+    fn lerp(&self, other: &Self, t: f32) -> Self {
+        let weight = lerp(self.weight, other.weight, t);
+
+        Self {
+            id: self.id,
+            parent_id: self.parent_id, // assume same parent
+            weight,
+            terrain_profile_id: self.terrain_profile_id, // or resolve conflict
+            base_rule_ids: self.base_rule_ids.clone(),
+        }
+    }
+    fn scaled(&self, w: f32) -> Self {
+        Self {
+            id: self.id,
+            parent_id: self.parent_id,
+            weight: w,
+            terrain_profile_id: self.terrain_profile_id.clone(),
+            base_rule_ids: self.base_rule_ids.clone(),
+        }
+    }
+}
+
+impl SubSample {
     pub fn parent_id(&self) -> BiomeID {
         self.parent_id
-    }
-
-    pub fn weight(&self) -> f32 {
-        self.weight
     }
 
     pub fn base_rule_ids(&self) -> &Vec<BaseRuleID> {
@@ -165,72 +211,67 @@ impl SubSample {
     pub fn terrain_profile_id(&self) -> &Option<TerrainProfileID> {
         &self.terrain_profile_id
     }
+}
 
-    pub fn lerp(a: &Vec<SubSample>, b: &Vec<SubSample>, t: f32) -> Vec<SubSample> {
-        let mut out = Vec::new();
+pub trait WeightedSample: Sized + Clone {
+    type Id: Ord + Copy;
 
-        let mut i = 0;
-        let mut j = 0;
+    fn id(&self) -> Self::Id;
+    fn weight(&self) -> f32;
+    fn set_weight(&mut self, w: f32);
 
-        while i < a.len() && j < b.len() {
-            match a[i].id.0.cmp(&b[j].id.0) {
-                Ordering::Equal => {
-                    let weight = lerp(a[i].weight, b[j].weight, t);
-                    if weight > WEIGHT_EPSILON {
-                        out.push(SubSample {
-                            id: a[i].id,
-                            parent_id: a[i].parent_id,
-                            weight,
-                            terrain_profile_id: a[i].terrain_profile_id,
-                            base_rule_ids: a[i].base_rule_ids.clone(),
-                        });
-                    }
-                    i += 1;
-                    j += 1;
+    fn lerp(&self, other: &Self, t: f32) -> Self;
+    fn scaled(&self, w: f32) -> Self;
+}
+
+pub fn merge_lerp<T: WeightedSample>(a: &[T], b: &[T], t: f32) -> Vec<T> {
+    let mut out = Vec::with_capacity(a.len() + b.len());
+
+    let mut i = 0;
+    let mut j = 0;
+
+    while i < a.len() && j < b.len() {
+        match a[i].id().cmp(&b[j].id()) {
+            Ordering::Equal => {
+                let item = a[i].lerp(&b[j], t);
+                if item.weight() > WEIGHT_EPSILON {
+                    out.push(item);
                 }
-                Ordering::Less => {
-                    let weight = a[i].weight * (1.0 - t);
-                    if weight > WEIGHT_EPSILON {
-                        out.push(a[i].scaled(weight));
-                    }
-                    i += 1;
+                i += 1;
+                j += 1;
+            }
+            Ordering::Less => {
+                let item = a[i].scaled(a[i].weight() * (1.0 - t));
+                if item.weight() > WEIGHT_EPSILON {
+                    out.push(item);
                 }
-                Ordering::Greater => {
-                    let weight = b[j].weight * t;
-                    if weight > WEIGHT_EPSILON {
-                        out.push(b[j].scaled(weight));
-                    }
-                    j += 1;
+                i += 1;
+            }
+            Ordering::Greater => {
+                let item = b[j].scaled(b[j].weight() * t);
+                if item.weight() > WEIGHT_EPSILON {
+                    out.push(item);
                 }
+                j += 1;
             }
         }
-        // Remaining elements in a
-        while i < a.len() {
-            let weight = a[i].weight * (1.0 - t);
-            if weight > WEIGHT_EPSILON {
-                out.push(a[i].scaled(weight));
-            }
-            i += 1;
-        }
-
-        // Remaining elements in b
-        while j < b.len() {
-            let weight = b[j].weight * t;
-            if weight > WEIGHT_EPSILON {
-                out.push(b[j].scaled(weight));
-            }
-            j += 1;
-        }
-        out
     }
 
-    pub fn scaled(&self, w: f32) -> SubSample {
-        SubSample {
-            id: self.id,
-            parent_id: self.parent_id,
-            weight: w,
-            terrain_profile_id: self.terrain_profile_id,
-            base_rule_ids: self.base_rule_ids.clone(),
+    while i < a.len() {
+        let item = a[i].scaled(a[i].weight() * (1.0 - t));
+        if item.weight() > WEIGHT_EPSILON {
+            out.push(item);
         }
+        i += 1;
     }
+
+    while j < b.len() {
+        let item = b[j].scaled(b[j].weight() * t);
+        if item.weight() > WEIGHT_EPSILON {
+            out.push(item);
+        }
+        j += 1;
+    }
+
+    out
 }

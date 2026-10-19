@@ -1,34 +1,28 @@
 {
-    "type": "object",
-    "title": "Density Curves",
-    "description": "Used in modifying the 3d terrain",
-    "properties": {
-        "id": {
-            "type": "string",
-            "format": "namespaced"
-        },
-        "values": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "height": {
-                        "type": "number"
-                    },
-                    "density": {
-                        "type": "number"
-                    }
-                },
-                "required": [
-                    "height",
-                    "density"
-                ]
-            },
-            "minItems": 1
-        }
-    },
-    "required": [
-        "id",
-        "value"
-    ]
+	"type": "object",
+	"title": "Density Curves",
+	"description": "Used in modifying the 3d terrain",
+	"properties": {
+		"id": {
+			"type": "string",
+			"format": "namespaced"
+		},
+		"values": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"height": {
+						"type": "number"
+					},
+					"density": {
+						"type": "number"
+					}
+				},
+				"required": ["height", "density"]
+			},
+			"minItems": 1
+		}
+	},
+	"required": ["id", "value"]
 }

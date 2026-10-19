@@ -1,0 +1,12 @@
+{
+	"id": "rule_flag:region",
+	"values": [
+		"allow_caves",
+		"allow_rivers",
+		"allow_snow",
+		"allow_rain",
+		"allow_dugeons",
+		"allow_villages",
+		"allow_cities"
+	]
+}

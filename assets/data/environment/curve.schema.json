@@ -1,0 +1,19 @@
+{
+	"type": "object",
+	"title": "Environment Curves",
+	"description": "Used to shape the visual look of the environment over a period of time",
+	"properties": {
+		"id": {
+			"type": "string",
+			"format": "namespaced"
+		},
+		"values": {
+			"type": "array",
+			"items": {
+				"type": "number"
+			},
+			"minItems": 1
+		}
+	},
+	"required": ["id", "values"]
+}

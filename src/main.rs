@@ -15,7 +15,6 @@ mod renderer;
 mod ui;
 mod window;
 
-use net::ClientPlugin;
 use renderer::RasterMaterial;
 
 fn main() {
@@ -56,7 +55,7 @@ fn main() {
             ui::UIPlugins,
             ProgressPlugin::<ui::ManagerState>::new()
                 .with_state_transition(ui::ManagerState::LoadingGame, ui::ManagerState::InGame),
-            ClientPlugin,
+            net::ClientPlugin,
             ambassadors::AmbassorPlugins,
             InputManagerPlugin::<player::Input>::default(),
             player::PlayerPlugin,

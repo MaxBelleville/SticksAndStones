@@ -1,8 +1,8 @@
 #import "shaders/shared.wgsl"::{
-    view,env, frame, reconstruct_world_ray, reconstruct_world_position, 
+    view,env, frame, reconstruct_world_ray, reconstruct_world_position,
 }
 
-#import "shaders/enviroment.wgsl"::{
+#import "shaders/environment.wgsl"::{
     sky_color, quantize, sun_disk, forward_scattering,
     horizon_rim, env_height, fog, sun_glow, alpha_moon_disk, alpha_moon_glow,
     beta_moon_disk, beta_moon_glow,sky_compensation, horizon_scattering, sky_lights
@@ -28,11 +28,11 @@ var hdr_out_tex: texture_storage_2d<rgba16float, write>;
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let slice_index = id.z;
     let coord = vec2<i32>(id.xy);
-    
+
     let resolution = frame.resolution;
     if (id.x >= u32(resolution.x) || id.y >= u32(resolution.y) || slice_index >= 6u) {
         return;
-    }  
+    }
 
     // Fetch G-buffer data
     var albedo_color = textureLoad(albedo_tex, coord, 0);
@@ -58,7 +58,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     sky = quantize(sky);
 
 
-    
+
     let ambient = sky * 0.08;
 
     let horizon_light = env.dynamic.horizon_color * 0.15;
@@ -69,7 +69,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     var lit_surface = albedo_color.rgb* total;
 
- 
+
     // --- Distance-based fog ---
     if (depth > 0.0) {
         let world_pos = reconstruct_world_position(depth,coord);

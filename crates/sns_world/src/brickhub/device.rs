@@ -1,5 +1,4 @@
-
-use super::{BrickIndex, CellID, brick,MaterialID};
+use super::{CellID, MaterialID, brick};
 use bevy_math::*;
 use sns_core::prelude::*;
 
@@ -40,7 +39,6 @@ impl Buffers {
     pub fn get_index_mut(&mut self) -> &mut GpuBuffer<u32> {
         &mut self.indices
     }
-
 }
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
@@ -59,7 +57,7 @@ impl CellRange {
     pub fn get_id(&self) -> CellID {
         self.cell_id
     }
-    pub fn get_range(&self) -> &Range<usize>{
+    pub fn get_range(&self) -> &Range<usize> {
         &self.range
     }
 }

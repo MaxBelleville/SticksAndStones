@@ -1,10 +1,9 @@
+use super::{AssetRef, StaticAsset, metadata, registry};
 use bevy_math::*;
 use serde::Deserialize;
-use sns_macros::{AssetDef, FieldMath};
-use super::{DefinedAsset, AssetRef, registry, metadata,IterableMut,IterableRef};
+use sns_macros::{FieldMath, MakeAsset};
 
-
-#[derive(Default, AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "worldshared")]
 pub struct NoiseField {
     frequency: f32,
@@ -14,8 +13,7 @@ pub struct NoiseField {
     mult: f32,
 }
 
-
-#[derive(Default, Copy, Clone, FieldMath, AssetDef)]
+#[derive(Default, Copy, Clone, FieldMath, MakeAsset)]
 #[asset(namespace = "worldshared")]
 pub struct ClimateField {
     temperature: f32,
@@ -41,19 +39,18 @@ impl ClimateField {
     }
 }
 
-
-#[derive(Default, AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "worldshared")]
 pub struct BaseRule {
     min_weight: f32,
     is_feature: bool,
-    scope: String,       //regional,biome,subbiome
-    rule_type: String,   //Ex village,enemey_nest, dugeon, city,etc.
+    scope: String,     //regional,biome,subbiome
+    rule_type: String, //Ex village,enemey_nest, dugeon, city,etc.
     #[asset_ref(BaseRule)]
     child_id: Option<BaseRuleID>, //Specific modifier or structure ex elven tree / goblin camp.
 }
 
-#[derive(Default, AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "worldshared")]
 pub struct TerrainProfile {
     #[asset_ref(NoiseField)]
@@ -66,14 +63,14 @@ pub struct TerrainProfile {
     density_curve_id: Option<DensityCurveID>,
 }
 
-#[derive(Default,Deserialize)]
+#[derive(Default, Deserialize)]
 
 pub struct DensityPoint {
     height: f32,
     density: f32,
 }
 
-#[derive(Default, AssetDef)]
+#[derive(Default, MakeAsset)]
 #[asset(namespace = "worldshared")]
 pub struct DensityCurve {
     points: Vec<DensityPoint>,

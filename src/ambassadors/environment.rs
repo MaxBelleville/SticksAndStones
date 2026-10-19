@@ -3,7 +3,7 @@ use std::f32::consts::{PI, TAU};
 use super::{TimeManager, world};
 use crate::{renderer, ui};
 use bevy::prelude::*;
-use sns_assets::{AssetRef, enviroment};
+use sns_assets::{AssetRef, environment};
 pub struct EnviromentPlugin;
 
 impl Plugin for EnviromentPlugin {
@@ -18,8 +18,8 @@ impl Plugin for EnviromentPlugin {
 }
 
 pub struct PresetCurve {
-    start: enviroment::Preset,
-    end: enviroment::Preset,
+    start: environment::Preset,
+    end: environment::Preset,
     curve: SampleAutoCurve<f32>,
     duration: Vec2,
 }
@@ -34,9 +34,9 @@ pub struct CurveManager {
 impl CurveManager {
     pub fn add_preset(
         &mut self,
-        start: enviroment::Preset,
-        end: enviroment::Preset,
-        curve: enviroment::Curve,
+        start: environment::Preset,
+        end: environment::Preset,
+        curve: environment::Curve,
         duration: Vec2,
     ) {
         let interval = interval(0.0, 1.0).unwrap();
@@ -47,7 +47,7 @@ impl CurveManager {
             duration,
         });
     }
-    pub fn new(sun: enviroment::Curve, moon: enviroment::Curve, fog: enviroment::Curve) -> Self {
+    pub fn new(sun: environment::Curve, moon: environment::Curve, fog: environment::Curve) -> Self {
         let interval = interval(0.0, 1.0).unwrap();
         Self {
             sun_intensity: SampleAutoCurve::<f32>::new(interval, sun.values().iter().cloned())
@@ -106,15 +106,15 @@ fn collect_env(mut commands: Commands, world: Res<world::WorldData>) {
     let registry = world.get_registry();
     let fog_data = registry
         .curve
-        .lookup_asset(&AssetRef::from("enviroment:fog".to_string()))
+        .lookup_asset(&AssetRef::from("environment:fog".to_string()))
         .unwrap();
     let sun_data = registry
         .curve
-        .lookup_asset(&AssetRef::from("enviroment:sun_intensity".to_string()))
+        .lookup_asset(&AssetRef::from("environment:sun_intensity".to_string()))
         .unwrap();
     let moon_data = registry
         .curve
-        .lookup_asset(&AssetRef::from("enviroment:moon_intensity".to_string()))
+        .lookup_asset(&AssetRef::from("environment:moon_intensity".to_string()))
         .unwrap();
 
     let mut curve_mgr = CurveManager::new(sun_data.clone(), moon_data.clone(), fog_data.clone());

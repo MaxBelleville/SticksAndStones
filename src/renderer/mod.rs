@@ -29,17 +29,17 @@ use bitflags::bitflags;
 mod blit;
 mod compatability;
 mod compute;
+mod environment;
 mod lighting;
 mod post;
 mod raster;
 mod raymarch;
 mod structs;
-mod enviroment;
 
 use crate::window::WindowSettings;
 pub struct RendererPlugins;
+pub use environment::{EnviromentInterpolated, EnvironmentUniform};
 pub use structs::RasterMaterial;
-pub use enviroment::{EnvironmentUniform,EnviromentInterpolated};
 
 impl PluginGroup for RendererPlugins {
     fn build(self) -> PluginGroupBuilder {
@@ -63,7 +63,7 @@ impl Plugin for RendererPlugin {
         app.add_plugins((
             ExtractComponentPlugin::<WorldModelCamera>::default(),
             ExtractResourcePlugin::<WindowSettings>::default(),
-            ExtractResourcePlugin::<enviroment::EnvironmentUniform>::default(),
+            ExtractResourcePlugin::<environment::EnvironmentUniform>::default(),
             SortedRenderPhasePlugin::<raster::RasterGBuffer3D, MeshPipeline>::new(
                 RenderDebugFlags::default(),
             ),
@@ -136,7 +136,7 @@ pub fn prepare_shared_layout(mut commands: Commands) {
             (
                 uniform_buffer::<ViewUniform>(true),
                 uniform_buffer::<structs::FrameUniform>(false),
-                uniform_buffer::<enviroment::EnvironmentUniform>(false),
+                uniform_buffer::<environment::EnvironmentUniform>(false),
             ),
         ),
     );
@@ -151,7 +151,7 @@ pub fn prepare_shared_group(
     view_uniforms: Res<ViewUniforms>,
     queue: Res<RenderQueue>,
     settings: Res<WindowSettings>,
-    enviroment: Res<enviroment::EnvironmentUniform>,
+    environment: Res<environment::EnvironmentUniform>,
     views: Query<(Entity, &ViewUniformOffset), (With<ExtractedView>, With<WorldModelCamera>)>,
 ) {
     let Some(view_binding) = view_uniforms.uniforms.binding() else {
@@ -168,7 +168,7 @@ pub fn prepare_shared_group(
 
     frame_buffer.write_buffer(&render_device, &queue);
 
-    let mut env_buffer = UniformBuffer::from(enviroment.into_inner());
+    let mut env_buffer = UniformBuffer::from(environment.into_inner());
     env_buffer.write_buffer(&render_device, &queue);
 
     let bind_group = render_device.create_bind_group(

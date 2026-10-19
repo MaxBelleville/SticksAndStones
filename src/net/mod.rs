@@ -4,11 +4,9 @@ use bevy::prelude::*;
 
 use bevy_stdb::prelude::*;
 
+use server::{DatabaseProcessor, LocalServer, is_port_open};
 use stdb_bindings::{DbConnection, RemoteModule};
-
-use server::{DatabaseBuilt, LocalServer};
-
-use crate::net::stdb_bindings::User;
+use stdb_bindings::{User, UserTableAccess, userQueryTableAccess};
 
 pub struct ClientPlugin;
 
@@ -25,11 +23,8 @@ pub enum ClientState {
     #[default]
     NotConnected,
     StartLocal,
-    ConnectLocal,
-    ConnectRemote,
-    BuildingLocalDB,
-    BuildingRemoteDB,
-    Connecting,
+    ConnectIP,
+    BuildBridge,
     Connected,
 }
 
@@ -37,15 +32,14 @@ impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         //add spacetime db client
         app.init_state::<ClientState>()
-            .init_resource::<DatabaseBuilt>()
+            .init_resource::<DatabaseProcessor>()
             .add_systems(OnEnter(ClientState::StartLocal), start_local_server)
-            .add_systems(OnEnter(ClientState::BuildingLocalDB), build_local_db)
-            .add_systems(OnEnter(ClientState::Connecting), start_bevy_stdb)
+            .add_systems(OnEnter(ClientState::BuildBridge), start_bevy_stdb)
             .add_systems(
                 Update,
                 (
-                    wait_for_local_ready.run_if(
-                        in_state(ClientState::StartLocal).or(in_state(ClientState::ConnectLocal)),
+                    wait_for_server_ready.run_if(
+                        in_state(ClientState::StartLocal).or(in_state(ClientState::ConnectIP)),
                     ),
                     (subscribe_on_connect, on_user_insert),
                 ),
@@ -53,7 +47,7 @@ impl Plugin for ClientPlugin {
             .add_plugins(
                 StdbPlugin::<DbConnection, RemoteModule>::default()
                     .with_module_name("sticks-and-stones")
-                    .with_uri("http://localhost:3000")
+                    .with_uri("127.0.0.1:3000")
                     .add_table::<User>(|reg, db| reg.bind(db.user()))
                     .with_subscriptions::<SNSSubKey>()
                     .with_reconnect(StdbReconnectOptions::default())
@@ -68,59 +62,46 @@ fn start_local_server(mut commands: Commands) {
     commands.insert_resource(server);
 }
 
-fn wait_for_local_ready(
+fn wait_for_server_ready(
     opt_server: Option<Res<LocalServer>>,
-    mut next: ResMut<NextState<ClientState>>,
-    mut val: Local<i32>,
-) {
-    if let Some(server) = opt_server {
-        if server.is_ready() {
-            info!("Server is live!");
-            next.set(ClientState::BuildingLocalDB);
-            return;
-        }
-    }
 
-    //timeout
-    if *val >= 100 {
-        panic!("Took too long to boot server");
-    }
-    *val += 1;
-}
-
-fn monitor_local_server_health(
-    mut server: ResMut<LocalServer>,
+    mut db: ResMut<DatabaseProcessor>,
     mut next: ResMut<NextState<ClientState>>,
+    mut ticks: Local<i32>,
 ) {
-    if !server.is_alive() {
-        error!("Server process died unexpectedly!");
-        next.set(ClientState::NotConnected);
-    }
-}
-
-fn build_local_db(
-    server: Res<LocalServer>,
-    mut built: ResMut<DatabaseBuilt>,
-    mut next: ResMut<NextState<ClientState>>,
-) {
-    if built.get() {
+    // For a local server we need the process to exist before polling.
+    if opt_server.is_none() {
         return;
     }
-    if !server.local_db_exists() {
-        info!("Database does not exist, building local db");
-        if !server.build_local_db() {
-            panic!("Failed to build local db");
+
+    if is_port_open("127.0.0.1:3000") {
+        info!("Server is live");
+
+        // Only publish the DB when connecting locally.
+        if !db.exists() {
+            info!("Database does not exist, publishing local db");
+            if !db.publish_db() {
+                panic!("Failed to publish local db");
+            }
         }
-        info!("Local database built!");
-    } else {
-        info!("Local database already exists, skipping build")
+        info!("Server is ready building bevy stdb bridge");
+        next.set(ClientState::BuildBridge);
+        return;
     }
-    built.set(true);
-    next.set(ClientState::Connecting);
+
+    // Timeout guard — panic after ~100 frames of waiting.
+    if *ticks >= 100 {
+        panic!("Timed out waiting for server");
+    }
+    *ticks += 1;
 }
 
 fn start_bevy_stdb(mut request: WriteRequestStdbConnectionMessage) {
-    request.write_default();
+    request.write(RequestStdbConnectionMessage {
+        uri: Some("127.0.0.1:3000".to_string()),
+        module_name: Some("sticks-and-stones".to_string()),
+        token: None,
+    });
 }
 
 fn subscribe_on_connect(mut connected: ReadStdbConnectedMessage, mut subs: ResMut<StdbSubs>) {

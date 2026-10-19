@@ -1,14 +1,6 @@
 use bevy::{
-    anti_alias::{fxaa::Fxaa, taa::TemporalAntiAliasing},
-    camera::visibility::RenderLayers,
-    core_pipeline::{
-        prepass::{DeferredPrepass, DepthPrepass},
-        tonemapping::Tonemapping,
-    },
-    light::ShadowFilteringMethod,
-    post_process::bloom::Bloom,
-    prelude::*,
-    render::{extract_component::ExtractComponent, view::Hdr},
+    anti_alias::fxaa::Fxaa, camera::visibility::RenderLayers, core_pipeline::prepass::DepthPrepass,
+    prelude::*, render::view::Hdr,
 };
 use leafwing_input_manager::prelude::*;
 
@@ -165,9 +157,6 @@ struct Player;
 #[require(Transform, Visibility)]
 pub struct CameraPivot;
 
-
-
-
 fn spawn_player(mut commands: Commands) {
     commands
         .spawn((
@@ -192,16 +181,13 @@ fn spawn_player(mut commands: Commands) {
                             clear_color: Color::srgb_u8(15, 9, 20).into(),
                             ..default()
                         },
- 
                         Hdr,
                         RenderLayers::from(
                             renderer::RenderLayer::DEFAULT
                                 | renderer::RenderLayer::PARTICLES
                                 | renderer::RenderLayer::GIZMO3,
                         ),
-                        (
-                            Msaa::Off,
-                        ),
+                        (Msaa::Off,),
                     ));
 
                     // Spawn view model camera.
@@ -332,8 +318,7 @@ fn change_mode(
 
             if game_state.get() == &ui::GameState::Paused {
                 next_menu.set(ui::MenuState::Disabled);
-            }
-            else {
+            } else {
                 next_menu.set(ui::MenuState::Pause);
             }
 

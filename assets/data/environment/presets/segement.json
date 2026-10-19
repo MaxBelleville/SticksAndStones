@@ -1,0 +1,30 @@
+[
+	{
+		"id": "environment:dawn_to_noon",
+		"start_id": "environment:dawn",
+		"end_id": "environment:noon",
+		"curve_id": "environment:blend_dawn_to_noon",
+		"duration": [0.0, 0.25]
+	},
+	{
+		"id": "environment:noon_to_dusk",
+		"start_id": "environment:noon",
+		"end_id": "environment:dusk",
+		"curve_id": "environment:blend_noon_to_dusk",
+		"duration": [0.25, 0.5]
+	},
+	{
+		"id": "environment:duks_to_night",
+		"start_id": "environment:dusk",
+		"end_id": "environment:night",
+		"curve_id": "environment:blend_dusk_to_night",
+		"duration": [0.5, 0.75]
+	},
+	{
+		"id": "environment:night_to_dawn",
+		"start_id": "environment:night",
+		"end_id": "environment:dawn",
+		"curve_id": "environment:blend_night_to_dawn",
+		"duration": [0.75, 1.0]
+	}
+]

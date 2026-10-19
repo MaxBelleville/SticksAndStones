@@ -1,9 +1,9 @@
 use bevy_math::*;
-use smallvec::SmallVec;
+
 use sns_core::prelude::Range;
 
-use super::{BRICKS_PER_BRICKMAP, CellID, VOXELS_PER_BRICK, clipmap, device};
-use core::alloc;
+use super::{BRICKS_PER_BRICKMAP, CellID, VOXELS_PER_BRICK, device};
+
 use std::collections::HashMap;
 
 #[derive(Default)]

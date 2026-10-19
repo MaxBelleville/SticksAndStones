@@ -1,22 +1,18 @@
 {
-    "type": "object",
-    "title": "Noise Basis",
-    "description": "A container of noise and climate data",
-    "properties": {
-        "id": {
-            "type": "string",
-            "format": "namespaced"
-        },
-        "noise_id": {
-            "asset_ref": "worldshared:noise_field"
-        },
-        "weight_id": {
-            "asset_ref": "worldshared:climate_field"
-        }
-    },
-    "required": [
-        "id",
-        "noise_id",
-        "weight_id"
-    ]
+	"type": "object",
+	"title": "Noise Basis",
+	"description": "A container of noise and climate data",
+	"properties": {
+		"id": {
+			"type": "string",
+			"format": "namespaced"
+		},
+		"noise_id": {
+			"asset_ref": "worldshared:noise_field"
+		},
+		"weight_id": {
+			"asset_ref": "worldshared:climate_field"
+		}
+	},
+	"required": ["id", "noise_id", "weight_id"]
 }

@@ -1,0 +1,30 @@
+{
+	"type": "object",
+	"title": "Environment Presets",
+	"description": "Color of environment at a particular point during the day",
+	"properties": {
+		"id": {
+			"type": "string",
+			"format": "namespaced"
+		},
+		"sun_color": {
+			"color": true
+		},
+		"alpha_moon_color": {
+			"color": true
+		},
+		"beta_moon_color": {
+			"color": true
+		},
+		"horizon_color": {
+			"color": true
+		},
+		"mid_color": {
+			"color": true
+		},
+		"zenith_color": {
+			"color": true
+		}
+	},
+	"required": ["id"]
+}

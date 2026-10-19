@@ -1,6 +1,7 @@
 use crate::BIOME_BASE_WEIGHT;
 use crate::SUBBIOME_BASE_WEIGHT;
-use crate::prelude::{ClimateSample, LocalPlateSample};
+use crate::prelude::biome::WeightedSample;
+use crate::prelude::{ClimateSample, LocalSample};
 
 use bevy_math::*;
 
@@ -22,8 +23,8 @@ impl Plate {
         seed: i32,
         climate: ClimateSample,
         noise_fields: &HashMap<NoiseFieldID, NoiseField>,
-    ) -> LocalPlateSample {
-        let mut local = LocalPlateSample::default();
+    ) -> LocalSample {
+        let mut local = LocalSample::default();
         local.set_field(climate.field());
 
         local.set_base_rule_ids(climate.base_rule_ids().clone());
@@ -41,7 +42,7 @@ impl Plate {
                 let Some(terrain_profile_id) = sub.terrain_profile_id() else {
                     continue;
                 };
-       
+
                 self.apply(
                     terrain_profile_id,
                     coord,
@@ -64,7 +65,7 @@ impl Plate {
         coord: Vec2,
         seed: i32,
         weight: f32,
-        local: &mut LocalPlateSample,
+        local: &mut LocalSample,
         noise_fields: &HashMap<NoiseFieldID, NoiseField>,
     ) {
         let Some(tp) = self.terrain_profiles.get(terrain_profile_id) else {
@@ -73,7 +74,7 @@ impl Plate {
 
         let noise = noise_fields
             .get(tp.base_noise())
-            .map(|n| sample_fbm_2d(n,coord, seed))
+            .map(|n| sample_fbm_2d(n, coord, seed))
             .unwrap_or(0.0);
 
         // Height is stochastic

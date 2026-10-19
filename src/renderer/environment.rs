@@ -1,7 +1,5 @@
-
-
-use sns_assets::enviroment::Preset;
-use sns_core::prelude::{dir_from_angle};
+use sns_assets::environment::Preset;
+use sns_core::prelude::dir_from_angle;
 
 use bevy::{
     prelude::*,
@@ -86,7 +84,7 @@ impl From<Preset> for EnviromentInterpolated {
             ..default()
         }
     }
-}  
+}
 impl EnviromentInterpolated {
     pub fn set_sun(&mut self, angle: f32, intensity: f32) {
         let sun_dir = dir_from_angle(angle);

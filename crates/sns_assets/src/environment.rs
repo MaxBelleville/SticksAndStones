@@ -1,14 +1,15 @@
+use super::{AssetRef, StaticAsset, metadata, registry};
 use bevy_math::*;
-use sns_macros::AssetDef;
-use super::{DefinedAsset,registry,metadata, AssetRef};
 
-#[derive(Default,AssetDef,Clone)]
-#[asset(namespace = "enviroment")]
+use sns_macros::MakeAsset;
+
+#[derive(Default, MakeAsset, Clone)]
+#[asset(namespace = "environment")]
 pub struct Curve {
     values: Vec<f32>,
 }
-#[derive(Default,AssetDef, Clone, Copy)]
-#[asset(namespace = "enviroment")]
+#[derive(Default, MakeAsset, Clone, Copy)]
+#[asset(namespace = "environment")]
 pub struct Preset {
     sun_color: Vec3,
     alpha_moon_color: Vec3,
@@ -32,9 +33,8 @@ impl Preset {
     }
 }
 
-
-#[derive(Default,AssetDef)]
-#[asset(namespace = "enviroment")]
+#[derive(Default, MakeAsset)]
+#[asset(namespace = "environment")]
 pub struct PresetSegement {
     #[asset_ref(Curve)]
     curve_id: CurveID,
@@ -43,5 +43,4 @@ pub struct PresetSegement {
     #[asset_ref(Preset)]
     end_id: PresetID,
     duration: Vec2,
-
 }
