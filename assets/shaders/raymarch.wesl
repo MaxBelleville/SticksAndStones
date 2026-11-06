@@ -1,5 +1,5 @@
 
-#import "shaders/shared.wgsl"::{
+#import "shaders/shared.wesl"::{
     view, frame,EPSILON,MAX_STEPS,MAX_DIST,PI
 }
 #import bevy_render::{
@@ -86,7 +86,7 @@ fn estimate_normal(p: vec3<f32>) -> vec3<f32> {
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let coord = vec2<i32>(id.xy);
-    
+
     let resolution = frame.resolution;
     if (id.x >= u32(resolution.x) || id.y >= u32(resolution.y)) {
         return;
@@ -123,5 +123,5 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     else {
         textureStore(combined_depth_tex, coord, vec4<f32>(raster_depth));
     }
- 
+
 }

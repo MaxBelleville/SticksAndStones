@@ -1,4 +1,4 @@
-#import "shaders/shared.wgsl"::{
+#import "shaders/shared.wesl"::{
     view, frame
 }
 

@@ -1,20 +1,21 @@
 use std::marker::PhantomData;
 
 use bevy::{
-    prelude::*, render::{
-        render_graph::RenderLabel, render_resource::{
-            AsBindGroup, BindGroup, BindGroupLayoutDescriptor, ShaderType,
-            TextureView,
-        }, texture::CachedTexture
-    }
+    prelude::*,
+    render::{
+        render_graph::RenderLabel,
+        render_resource::{
+            AsBindGroup, BindGroup, BindGroupLayoutDescriptor, ShaderType, TextureView,
+        },
+        texture::CachedTexture,
+    },
 };
 use bytemuck::{Pod, Zeroable};
 
-
-pub const RASTER_SHADER_PATH: &str = "shaders/raster.wgsl";
-pub const RAYMARCH_SHADER_PATH: &str = "shaders/raymarch.wgsl";
-pub const LIGHTING_SHADER_PATH: &str = "shaders/lighting.wgsl";
-pub const POST_SHADER_PATH: &str = "shaders/post.wgsl";
+pub const RASTER_SHADER_PATH: &str = "shaders/raster.wesl";
+pub const RAYMARCH_SHADER_PATH: &str = "shaders/raymarch.wesl";
+pub const LIGHTING_SHADER_PATH: &str = "shaders/lighting.wesl";
+pub const POST_SHADER_PATH: &str = "shaders/post.wesl";
 
 #[derive(Default)]
 

@@ -67,7 +67,7 @@ cargo fmt --all
 - **Naming:** follow standard Rust conventions — `snake_case` for modules, functions, and variables; `PascalCase` for types and traits; `SCREAMING_SNAKE_CASE` for constants.
 - **Modules:** each logical subsystem lives in its own module directory with a `mod.rs`. Keep modules focused; avoid monolithic files.
 - **Asset references** use the `namespace:name` string format (e.g. `"lib:stone_block"`).
-- **Shader files** are `.wgsl` and live under `assets/shaders/`. Shader path constants are defined in `sns_core`.
+- **Shader files** are `.wesl` and live under `assets/shaders/`. Shader path constants are defined in `sns_core`.
 
 ---
 

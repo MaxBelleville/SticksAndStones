@@ -7,8 +7,7 @@ edition = "2024"
 bytemuck = {workspace = true}
 bevy_math = {workspace = true}
 smallvec = {workspace = true}
-lru = "0.16.3"
+lru = "0.19.0"
 
 sns_core = {path = "../sns_core"}
 sns_macros = {path = "../sns_macros"}
-sns_assets = {path = "../sns_assets"}

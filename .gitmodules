@@ -1,0 +1,3 @@
+[submodule "crates/sns_asset_manager"]
+	path = crates/sns_asset_manager
+	url = https://github.com/MaxBelleville/sns_asset_manager.git

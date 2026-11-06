@@ -12,6 +12,6 @@ crate-type = ["cdylib"]
 members = []
 
 [dependencies]
-spacetimedb = "2.1.0"
+spacetimedb = "2.14.1"
 log = "0.4"
-bevy_math = "0.18.0"
+bevy_math = "0.20.1"

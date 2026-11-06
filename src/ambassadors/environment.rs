@@ -3,7 +3,7 @@ use std::f32::consts::{PI, TAU};
 use super::{TimeManager, world};
 use crate::{renderer, ui};
 use bevy::prelude::*;
-use sns_assets::{AssetRef, environment};
+
 pub struct EnviromentPlugin;
 
 impl Plugin for EnviromentPlugin {

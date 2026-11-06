@@ -1,8 +1,8 @@
-#import "shaders/shared.wgsl"::{
+#import "shaders/shared.wesl"::{
     view,env, frame, reconstruct_world_ray, reconstruct_world_position,
 }
 
-#import "shaders/environment.wgsl"::{
+#import "shaders/environment.wesl"::{
     sky_color, quantize, sun_disk, forward_scattering,
     horizon_rim, env_height, fog, sun_glow, alpha_moon_disk, alpha_moon_glow,
     beta_moon_disk, beta_moon_glow,sky_compensation, horizon_scattering, sky_lights

@@ -1,10 +1,10 @@
 
-#import "shaders/shared.wgsl"::{
+#import "shaders/shared.wesl"::{
     env
 }
 
 fn sky_color(ray_dir: vec3<f32>, h: f32) -> vec3<f32> {
-   
+
     // horizon → mid
     let lower = smoothstep(
         0.0,
@@ -162,4 +162,3 @@ fn fog(world_pos: vec3<f32>, dist: f32) -> f32 {
     let height_factor = exp(-world_pos.y * env.constants.fog_height_falloff);
     return (1.0 - exp(-dist * env.dynamic.fog_density)) * height_factor;
 }
-
